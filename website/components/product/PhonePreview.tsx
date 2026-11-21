@@ -79,6 +79,9 @@ export function PreviewUI({ screen, active = false, onAction, sheet }: {
     <div className="preview-page-title"><span className="preview-icon"><Trophy /></span><div><strong>Achievements</strong><small>Level 4 · 820 XP</small></div></div>
     <div className="preview-progress"><i /></div>
     {active ? <div className="preview-award">
+      <span className="preview-award-heart preview-award-heart-left" aria-hidden="true">💗</span>
+      <span className="preview-award-heart preview-award-heart-right" aria-hidden="true">💖</span>
+      <span className="preview-award-heart preview-award-heart-bottom" aria-hidden="true">💕</span>
       <div className="preview-award-art">
         <span aria-hidden="true">✦</span>
         <Image src="/brand/logo.webp" alt="" width={44} height={44} />

@@ -48,6 +48,7 @@ export default function Home() {
   };
   return <>
     <Navbar />
+    <div aria-hidden="true" className="scroll-progress" />
     <main id="main">
       <section className="hero" aria-labelledby="hero-heading">
         <div className="hero-copy shell">
@@ -79,7 +80,7 @@ export default function Home() {
         <Reveal className="demo-heading"><p className="eyebrow">Interactive demo</p><h2 id="demo-heading">Every step reveals<br />something new.</h2>
           <p>Move the marker and watch the fog lift. Your own map works the same way as you travel.</p>
         </Reveal>
-        <div className="demo-card"><FogDemo /><div className="demo-credit"><MapCredits /></div></div>
+        <Reveal className="demo-card" media delay={0.06}><FogDemo /><div className="demo-credit"><MapCredits /></div></Reveal>
       </section>
 
       <section className="features section-space shell" id="features" aria-label="Features">
@@ -88,7 +89,7 @@ export default function Home() {
           const mapBased = feature.screen === "fog-of-war" || feature.screen === "heatmap";
           return <article className={`feature ${index % 2 ? "feature-reversed" : ""}`} key={feature.screen}>
             <Reveal className="feature-copy"><p className="eyebrow">{feature.category}</p><h2>{feature.title}</h2><p>{feature.description}</p></Reveal>
-            <Reveal className="feature-card">
+            <Reveal className="feature-card" media delay={0.07}>
               <figure>
                 <div className={`feature-visual feature-${feature.screen}`}>
                   {media.video ? <VideoShowcase sources={media.video} title={media.alt}
@@ -112,7 +113,7 @@ export default function Home() {
           {screenAssets.map(({ id, label, alt }) => {
             const { screenshot } = mediaFor(id);
             return <figure key={id} className="gallery-item">
-              <AppScreenshot src={screenshot} alt={alt} screen={id} />
+              <Reveal media><AppScreenshot src={screenshot} alt={alt} screen={id} /></Reveal>
               <figcaption><strong>{label}</strong><span>{screenshot ? "App screenshot" : "Interface preview"}</span></figcaption>
             </figure>;
           })}
@@ -126,17 +127,19 @@ export default function Home() {
             <p>MapMine keeps your journeys, saved places, and discovered territories on your device. You decide when tracking runs and what to keep.</p>
             <Link className="privacy-link" href="/privacy/" prefetch={false}>Read the privacy policy</Link>
           </Reveal>
-          <ul>{privacy.map(({ icon: Icon, text }) => <li key={text}><Icon size={19} strokeWidth={1.7} aria-hidden="true" /><span>{text}</span></li>)}</ul>
+          <Reveal delay={0.09}><ul>{privacy.map(({ icon: Icon, text }) => <li key={text}><Icon size={19} strokeWidth={1.7} aria-hidden="true" /><span>{text}</span></li>)}</ul></Reveal>
         </div>
       </section>
 
       <section id="download" className="download shell section-space" aria-labelledby="download-heading">
         <Reveal><h2 id="download-heading">Go outside.<br />Discover something.</h2><p>A familiar street can become a new adventure.</p></Reveal>
-        <DownloadChoices links={downloads} />
-        <p className="release-version">App version {site.version}</p>
+        <Reveal delay={0.08}>
+          <DownloadChoices links={downloads} />
+          <p className="release-version">App version {site.version}</p>
+        </Reveal>
       </section>
     </main>
-    <Footer />
+    <Reveal><Footer /></Reveal>
     <StickyDownload />
     <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(schema).replace(/</g, "\\u003c") }} />
   </>;

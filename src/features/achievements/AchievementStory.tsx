@@ -16,6 +16,12 @@ import type { Milestone } from "./milestones";
 export type EarnedStory = { milestone: Milestone; award: Unlock };
 const exportSize = { width: 1080, height: 1920 };
 const cardBackground = require("../../../assets/achievement-story-background.png");
+const heartBackdrop = [
+  { glyph: "💗", left: -24, top: 50, size: 104, opacity: 0.3, angle: "-16deg" },
+  { glyph: "💖", left: 195, top: 162, size: 105, opacity: 0.3, angle: "14deg" },
+  { glyph: "💕", left: -16, top: 274, size: 84, opacity: 0.3, angle: "-12deg" },
+  { glyph: "🫶", left: 183, top: 410, size: 88, opacity: 0.3, angle: "13deg" },
+];
 const celebration = [
   { glyph: "✦", left: 56, top: 112, size: 17 },
   { glyph: "✧", left: 67, top: 173, size: 14 },
@@ -84,6 +90,11 @@ export default function AchievementStory({ milestone, award, onClose }: EarnedSt
           accessible={false} style={[StyleSheet.absoluteFill, { width: "100%", height: "100%" }]} />
         <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants"
           style={StyleSheet.absoluteFill}>
+          {heartBackdrop.map(({ glyph, left, top, size, opacity, angle }) => (
+            <Text key={glyph} allowFontScaling={false} style={[local.overlay, {
+              left: left * unit, top: top * unit, fontSize: size * unit, opacity, transform: [{ rotate: angle }],
+            }]}>{glyph}</Text>
+          ))}
           {celebration.map(({ glyph, left, top, size }) => (
             <Text key={left} allowFontScaling={false} style={[local.overlay, {
               left: left * unit, top: top * unit, fontSize: size * unit, color: accent,
