@@ -3,13 +3,17 @@
     "name": "MapMine",
     "slug": "MapMine",
     "version": "1.0.0",
+    "scheme": "mapmine",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "ios": {
+      "bundleIdentifier": "com.mapmine.app",
       "supportsTablet": true
     },
     "android": {
+      "package": "com.mapmine.app",
+      "allowBackup": false,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -20,6 +24,54 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-sqlite",
+      "expo-status-bar",
+      "expo-router",
+      "expo-sharing",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "MapMine uses your location while open to reveal territory and record your journeys."
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-logo.png",
+          "imageWidth": 96,
+          "backgroundColor": "#101010",
+          "resizeMode": "contain"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Choose an image to use as your MapMine logo.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
+      "expo-notifications",
+      ["expo-asset", { "assets": ["./assets/india_landmarks_v2.db"] }],
+      ["expo-widgets", {
+        "enableAndroid": true,
+        "widgets": [{
+          "name": "MapMineExploration",
+          "displayName": "MapMine Exploration",
+          "description": "See your latest travel distance and unlocked territory.",
+          "ios": {
+            "supportedFamilies": ["systemSmall", "systemMedium"],
+            "initialLayout": "src/features/engagement/ExplorationWidget.ios.tsx"
+          },
+          "android": {
+            "targetCellWidth": 3,
+            "targetCellHeight": 2,
+            "initialLayout": "src/features/engagement/ExplorationWidget.android.tsx"
+          }
+        }]
+      }]
+    ]
   }
 }
