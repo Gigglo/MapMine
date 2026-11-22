@@ -58,7 +58,7 @@ export default function Home() {
           <p className="hero-description">Explore the real world, lift the fog as you go, and build a map of everywhere you’ve been.</p>
           <div className="hero-actions" id="hero-actions">
             <a className="button button-light" href="#download">Download MapMine</a>
-            <a className="button button-dark" href="#explore"><Play size={14} aria-hidden="true" />See it in action</a>
+            <a className="button button-dark" href="#launch-film"><Play size={14} aria-hidden="true" />Watch the launch film</a>
           </div>
         </div>
         <figure className="hero-showcase shell">
@@ -75,6 +75,15 @@ export default function Home() {
             <MapCredits />
           </figcaption>
         </figure>
+      </section>
+
+      <section id="launch-film" className="shell launch-film section-space" aria-labelledby="launch-film-heading">
+        <h2 id="launch-film-heading">MapMine launch film</h2>
+        <video controls playsInline preload="none" width={1280} height={720}
+          poster="/posters/mapmine-launch.webp" aria-labelledby="launch-film-heading">
+          <source src="/videos/mapmine-launch.mp4" type="video/mp4" />
+          <a href="/videos/mapmine-launch.mp4">Download the MapMine launch film</a>
+        </video>
       </section>
 
       <section id="explore" className="shell demo section-space" aria-labelledby="demo-heading">
