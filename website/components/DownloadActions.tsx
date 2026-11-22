@@ -19,7 +19,7 @@ export function DownloadChoices({ links }: { links: ReleaseLinks }) {
     <div className="release-choice" data-release="android">
       <Smartphone size={21} aria-hidden="true" />
       <div><strong>Android</strong>
-        <span>{links.androidApk ? "Direct APK available" : links.androidStore ? "Available on Google Play" : "Coming soon"}</span></div>
+        <span>{links.androidApk ? "APK available on GitHub" : links.androidStore ? "Available on Google Play" : "Coming soon"}</span></div>
       {links.androidApk && <a className="button button-light" href={links.androidApk} download={links.androidApk.startsWith("/") || undefined}>Download APK</a>}
       {links.androidStore && <a className={`button ${links.androidApk ? "button-dark" : "button-light"}`} href={links.androidStore}>Google Play</a>}
     </div>
