@@ -20,6 +20,9 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return <html lang="en" className={GeistSans.variable}>
+    <head>
+      <script async data-goatcounter="https://burnedpoteto.goatcounter.com/count" src="https://gc.zgo.at/count.js" />
+    </head>
     <body><a className="skip-link" href="#main">Skip to content</a>{children}</body>
   </html>;
 }
