@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
-import { Database, Power, FileDown, Trash2, Play, Fingerprint } from "lucide-react";
+import { ArrowUpRight, Database, Power, FileDown, Trash2, Play, Fingerprint } from "lucide-react";
 import { site } from "../config/site";
 import { mediaFor, screenAssets, type Screen } from "../config/assets";
 import { cartography } from "../config/cartography";
@@ -136,6 +137,13 @@ export default function Home() {
         <Reveal delay={0.08}>
           <DownloadChoices links={downloads} />
           <p className="release-version">App version {site.version}</p>
+          <div className="project-links">
+            <a href={site.productHunt.url} target="_blank" rel="noopener noreferrer" className="product-hunt-badge">
+              <Image alt="MapMine — The World Is Yours to Discover. | Product Hunt" width={250} height={54}
+                src={site.productHunt.badge} referrerPolicy="no-referrer" unoptimized />
+            </a>
+            <a href={site.github} className="button button-quiet">Open source on GitHub <ArrowUpRight size={15} aria-hidden="true" /></a>
+          </div>
         </Reveal>
       </section>
     </main>

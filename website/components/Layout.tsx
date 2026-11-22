@@ -29,7 +29,7 @@ export function Footer() {
       <Link href="/#download" prefetch={false}>Download</Link><Link href="/#features" prefetch={false}>Features</Link><Link href="/privacy/" prefetch={false}>Privacy policy</Link>
       {site.terms && <a href={site.terms}>Terms</a>}
       {site.contact && <a href={`mailto:${site.contact}`}>Contact</a>}
-      {site.github && <a href={site.github}>GitHub</a>}
+      <a href={site.github}>Open source on GitHub</a>
     </nav>
     <p className="copyright">© {new Date().getUTCFullYear()} MapMine</p>
   </footer>;

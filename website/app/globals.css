@@ -226,6 +226,9 @@ h2 { font-size: clamp(2.3rem, 4.8vw, 4.4rem); line-height: 1.06; }
 .release-choice span { display: block; color: var(--secondary); font-size: .83rem; margin-top: 3px; }
 .release-choice .button { grid-column: 2; justify-self: start; }
 .release-version { margin-top: 13px; color: #969696; font-size: .79rem; }
+.project-links { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px; margin-top: 24px; }
+.product-hunt-badge { display: block; max-width: 100%; border-radius: 9px; }
+.product-hunt-badge img { width: 250px; max-width: 100%; height: auto; }
 .footer { border-top: 1px solid #242424; margin-top: clamp(72px, 10vw, 133px); padding: 24px 0 max(35px, env(safe-area-inset-bottom)); display: grid; gap: 18px; }
 .footer .footer-brand p { color: var(--secondary); font-size: .85rem; margin-top: 8px; }
 .footer nav { display: flex; flex-wrap: wrap; gap: 4px 17px; color: var(--secondary); font-size: .85rem; }
