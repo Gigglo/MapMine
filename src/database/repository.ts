@@ -7,9 +7,9 @@ import { migrate } from "./schema";
 export type Mode = "explore" | "normal" | "heatmap" | "places";
 export type Range = "Today" | "Week" | "Month" | "All time";
 export type Bounds = { south: number; north: number; west: number; east: number; zoom: number };
-export type Preferences = { name: string; tracking: number; haptics: number; retention: number; mode: Mode; notifications: number };
+export type Preferences = { name: string; tracking: number; haptics: number; retention: number; mode: Mode; notifications: number; walkthroughSeen: number };
 export type PlaceInput = Point & { name: string; category: string; icon: string; notes: string; radius: number; dwell: number };
-export type Place = PlaceInput & { id: number };
+export type Place = PlaceInput & { id: number; hasPhoto: number };
 export type Day = { day: string; meters: number; seconds: number; cells: number; area: number };
 export type Journey = { id: number; started: number; ended: number; meters: number; seconds: number };
 export type Visit = { place: number; entered: number; ended: number; day: string; seconds: number; active: number };
@@ -89,8 +89,10 @@ async function awardMilestones(db: SQLiteDatabase, summary: Summary, timestamp: 
 }
 
 export const readPreferences = () => query(async db =>
-  (await db.getFirstAsync<Preferences>("SELECT name,tracking,haptics,retention,mode,notifications FROM user_preferences WHERE id=1"))!);
-export const readPlaces = () => query(db => db.getAllAsync<Place>("SELECT * FROM saved_places ORDER BY name COLLATE NOCASE"));
+  (await db.getFirstAsync<Preferences>("SELECT name,tracking,haptics,retention,mode,notifications,walkthrough_seen AS walkthroughSeen FROM user_preferences WHERE id=1"))!);
+export const readPlaces = () => query(db => db.getAllAsync<Place>(`SELECT saved_places.*, EXISTS(
+    SELECT 1 FROM place_photos WHERE place=saved_places.id AND slot=0) AS hasPhoto
+    FROM saved_places ORDER BY name COLLATE NOCASE`));
 export const readVisits = (id: number) => query(db =>
   db.getAllAsync<Visit>("SELECT * FROM place_visits WHERE place=? ORDER BY entered DESC LIMIT 20", id));
 export const readActiveVisits = () => query(db =>
@@ -99,13 +101,41 @@ export const readLandmarkUnlocks = () => query(async db => Object.fromEntries(
   (await db.getAllAsync<LandmarkUnlock>("SELECT id,timestamp FROM unlocked_landmarks")).map(row => [row.id, row.timestamp])));
 export const summary = () => query(readSummary);
 
+export type RoutePoint = Point & { timestamp: number; journey: number };
+
+function dayBounds(day: string) {
+  const [year, month, date] = day.split("-").map(Number);
+  return [new Date(year, month - 1, date).getTime(), new Date(year, month - 1, date + 1).getTime()] as const;
+}
+
+export const readActivityDays = (first: string, last: string) => query(db =>
+  db.getAllAsync<Day>("SELECT * FROM daily_statistics WHERE day BETWEEN ? AND ? ORDER BY day", first, last));
+
+export const readDayActivity = (day: string) => query(async db => {
+  const [start, end] = dayBounds(day);
+  const [stats, visits, points, journeys] = await Promise.all([
+    db.getFirstAsync<Day>("SELECT * FROM daily_statistics WHERE day=?", day),
+    db.getFirstAsync<{ count: number }>("SELECT count(DISTINCT place) count FROM place_visits WHERE day=?", day),
+    db.getAllAsync<RoutePoint>(`SELECT timestamp,journey,latitude,longitude FROM location_samples
+      WHERE timestamp>=? AND timestamp<? ORDER BY timestamp`, start, end),
+    db.getAllAsync<Journey>(`SELECT * FROM journeys WHERE meters>=10 AND started<? AND ended>=?
+      ORDER BY started DESC`, end, start),
+  ]);
+  return { stats, visits: visits?.count ?? 0, points, journeys };
+});
+
+export const readAchievementRoute = (timestamp: number) => query(db =>
+  db.getAllAsync<RoutePoint>(`SELECT timestamp,journey,latitude,longitude FROM location_samples
+    WHERE timestamp>=? AND timestamp<=? ORDER BY timestamp`, dayBounds(dayKey(timestamp))[0], timestamp));
+
+
 export function setPreferences(value: Partial<Preferences>) {
   return query(async db => {
     await db.runAsync(`UPDATE user_preferences SET name=coalesce(?,name), tracking=coalesce(?,tracking),
       haptics=coalesce(?,haptics), retention=coalesce(?,retention), mode=coalesce(?,mode),
-      notifications=coalesce(?,notifications) WHERE id=1`,
+      notifications=coalesce(?,notifications), walkthrough_seen=coalesce(?,walkthrough_seen) WHERE id=1`,
     value.name ?? null, value.tracking ?? null, value.haptics ?? null, value.retention ?? null, value.mode ?? null,
-    value.notifications ?? null);
+    value.notifications ?? null, value.walkthroughSeen ?? null);
     if (value.retention !== undefined) await prune(db, value.retention);
   });
 }
@@ -115,23 +145,55 @@ function prune(db: SQLiteDatabase, days: number) {
 }
 export const pruneHistory = (days: number) => query(db => prune(db, days));
 
-export function savePlace(place: PlaceInput, id?: number) {
+export const readEasterEggs = () => query(db =>
+  db.getAllAsync<{ id: string; discovered: number }>("SELECT id,discovered FROM easter_eggs ORDER BY discovered DESC"));
+
+export const recordEasterEgg = (id: string) => query(async db =>
+  (await db.runAsync("INSERT OR IGNORE INTO easter_eggs VALUES(?,?)", id, Date.now())).changes > 0);
+
+export const maxPlacePhotos = 2;
+
+export const readPlaceCover = (id: number) => query(async db =>
+  (await db.getFirstAsync<{ jpeg: string }>("SELECT jpeg FROM place_photos WHERE place=? AND slot=0", id))?.jpeg);
+
+export const readPlacePhotos = (id: number) => query(async db =>
+  (await db.getAllAsync<{ jpeg: string }>("SELECT jpeg FROM place_photos WHERE place=? ORDER BY slot", id)).map(row => row.jpeg));
+
+export const readNearbyReminderTime = () => query(async db =>
+  (await db.getFirstAsync<{ nearby_at: number }>("SELECT nearby_at FROM reminder_state WHERE id=1"))?.nearby_at ?? 0);
+export const markNearbyReminder = (time: number) => query(db =>
+  db.runAsync("UPDATE reminder_state SET nearby_at=? WHERE id=1", time));
+
+export function savePlace(place: PlaceInput, id?: number, photos?: readonly string[]) {
   return query(async db => {
+    if (photos && (photos.length > maxPlacePhotos || photos.some(photo => !photo || photo.length > 1_500_000))) {
+      throw new Error("A place can hold up to two photos.");
+    }
     const args = [place.name.trim(), place.category, place.icon, place.notes.trim(),
       place.latitude, place.longitude, place.radius, place.dwell];
-    if (id !== undefined) {
-      await db.runAsync(`UPDATE saved_places SET name=?,category=?,icon=?,notes=?,latitude=?,longitude=?,radius=?,dwell=? WHERE id=?`, ...args, id);
-      return id;
-    }
-    const result = await db.runAsync("INSERT INTO saved_places(name,category,icon,notes,latitude,longitude,radius,dwell) VALUES(?,?,?,?,?,?,?,?)", ...args);
-    return result.lastInsertRowId;
+    let saved = id;
+    await db.withTransactionAsync(async () => {
+      if (id !== undefined) {
+        const updated = await db.runAsync(`UPDATE saved_places SET name=?,category=?,icon=?,notes=?,latitude=?,longitude=?,radius=?,dwell=? WHERE id=?`, ...args, id);
+        if (!updated.changes) throw new Error("This place no longer exists.");
+      } else {
+        saved = (await db.runAsync("INSERT INTO saved_places(name,category,icon,notes,latitude,longitude,radius,dwell) VALUES(?,?,?,?,?,?,?,?)", ...args)).lastInsertRowId;
+      }
+      if (photos !== undefined) {
+        await db.runAsync("DELETE FROM place_photos WHERE place=?", saved!);
+        for (const [slot, jpeg] of photos.entries()) {
+          await db.runAsync("INSERT INTO place_photos(place,slot,jpeg) VALUES(?,?,?)", saved!, slot, jpeg);
+        }
+      }
+    });
+    return saved!;
   });
 }
 export const deletePlace = (id: number) => query(db => db.runAsync("DELETE FROM saved_places WHERE id=?", id));
 
 type RecordInput = {
   fix: Fix; cells: string[]; meters: number; seconds: number; journey: number | null;
-  visits: Visit[]; departures: number[]; landmarkIds: string[]; heatSeconds?: number;
+  visits: Visit[]; departures: number[]; landmarkIds: string[]; heatSeconds?: number; summaryDay?: string;
 };
 
 export function recordFix(input: RecordInput) {
@@ -144,9 +206,13 @@ export function recordFix(input: RecordInput) {
     let summary: Summary | null = null;
     let awards: Unlock[] = [];
     const landmarkUnlocks: LandmarkUnlock[] = [];
+    let recorded = false;
     await db.withTransactionAsync(async () => {
-      const duplicate = await db.getFirstAsync("SELECT timestamp FROM location_samples WHERE timestamp=?", fix.timestamp);
-      if (duplicate) return;
+      const preference = await db.getFirstAsync<{ tracking: number }>("SELECT tracking FROM user_preferences WHERE id=1");
+      if (!preference?.tracking) return;
+      const newer = await db.getFirstAsync("SELECT timestamp FROM location_samples WHERE timestamp >= ? LIMIT 1", fix.timestamp);
+      if (newer) return;
+      recorded = true;
       if (journey === null) {
         journey = (await db.runAsync("INSERT INTO journeys(started,ended) VALUES(?,?)", fix.timestamp, fix.timestamp)).lastInsertRowId;
       }
@@ -180,12 +246,15 @@ export function recordFix(input: RecordInput) {
         const result = await db.runAsync("INSERT OR IGNORE INTO unlocked_landmarks VALUES(?,?)", id, fix.timestamp);
         if (result.changes) landmarkUnlocks.push({ id, timestamp: fix.timestamp });
       }
+      // Stationary samples still update the journey and heatmap. Reuse the published counters when none changed.
+      if (input.summaryDay === day && input.summaryDay === dayKey() &&
+        !meters && !seconds && !discovered && !visits.length && !landmarkUnlocks.length) return;
       const value = await readSummary(db);
       awards = await awardMilestones(db, value, fix.timestamp);
       value.unlocked.unshift(...awards);
       summary = value;
     });
-    return { journey, summary, awards, discovered, landmarkUnlocks };
+    return { recorded, journey, summary, awards, discovered, landmarkUnlocks };
   });
 }
 
@@ -204,6 +273,16 @@ function viewport(bounds: Bounds) {
     args.push(left, right);
   }
   return { sql, args };
+}
+
+export type PlacePhotoMarker = Point & { id: number; name: string; jpeg: string };
+export function visiblePlacePhotos(bounds: Bounds) {
+  if (bounds.zoom < 11) return Promise.resolve([]);
+  const { sql, args } = viewport(bounds);
+  return query(db => db.getAllAsync<PlacePhotoMarker>(`
+    SELECT saved_places.id, name, latitude, longitude, jpeg
+    FROM saved_places JOIN place_photos ON place_photos.place=saved_places.id AND slot=0
+    WHERE ${sql} ORDER BY saved_places.id DESC LIMIT 8`, ...args));
 }
 
 export function visibleCells(bounds: Bounds) {
@@ -234,11 +313,12 @@ export function clearHistory(reset: boolean) {
 
 export function exportData() {
   return query(async db => ({
-    version: 2, exportedAt: new Date().toISOString(),
+    version: 3, exportedAt: new Date().toISOString(),
     cells: await db.getAllAsync("SELECT * FROM explored_cells"),
     samples: await db.getAllAsync("SELECT * FROM location_samples"),
     journeys: await db.getAllAsync("SELECT * FROM journeys"),
     places: await db.getAllAsync("SELECT * FROM saved_places"),
+    placePhotos: await db.getAllAsync("SELECT * FROM place_photos ORDER BY place,slot"),
     visits: await db.getAllAsync("SELECT * FROM place_visits"),
     daily: await db.getAllAsync("SELECT * FROM daily_statistics"),
     heat: await db.getAllAsync("SELECT * FROM heat_cells"),

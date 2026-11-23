@@ -1,6 +1,6 @@
 export const colors = {
-  background: "#101010",
-  surface: "#1C1C1C",
+  background: "#0A0A0A",
+  surface: "#141414",
   elevated: "#262626",
   border: "#303030",
 
@@ -9,8 +9,8 @@ export const colors = {
   textMuted: "#666666",
 
   accent: "#FFFFFF",
-  location: "#60A5FA",
+  location: "#FFFFFF",
 
-  success: "#34D399",
-  danger: "#EF4444",
+  success: "#FFFFFF",
+  danger: "#E0E0E0",
 };

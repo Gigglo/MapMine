@@ -1,7 +1,8 @@
-import type { Bounds, HeatPoint, Mode, Place } from "../../database/repository";
+import type { Bounds, HeatPoint, Mode, Place, PlacePhotoMarker } from "../../database/repository";
 import { validPoint, type Point } from "../exploration/engine";
 
 export type MapCommand =
+  | { type: "searchPin"; point: Point | null }
   | { type: "zoom"; amount: 1 | -1 }
   | { type: "north" }
   | { type: "center"; point: Point; zoom?: number }
@@ -9,12 +10,14 @@ export type MapCommand =
   | { type: "mode"; mode: Mode }
   | { type: "fog"; polygons: number[][][][]; anchor: number }
   | { type: "heat"; points: HeatPoint[]; metric: "seconds" | "samples" }
+  | { type: "placePhoto"; photo: PlacePhotoMarker }
+  | { type: "visiblePlacePhotos"; ids: number[] }
   | { type: "placeGlyphs"; images: Record<string, string> }
   | { type: "landmarks"; points: (Point & { id: string; discovered: boolean })[] }
   | { type: "places"; places: Pick<Place, "id" | "latitude" | "longitude" | "icon">[] };
 
 export type MapEvent =
-  | { type: "ready" | "gesture" | "error" }
+  | { type: "ready" | "gesture" | "error" | "searchPin" }
   | { type: "viewport"; bounds: Bounds }
   | { type: "hold"; point: Point }
   | { type: "attribution"; url: string }
@@ -29,7 +32,7 @@ export function parseEvent(message: string): MapEvent | null {
     const value: unknown = JSON.parse(message);
     if (!value || typeof value !== "object" || !("type" in value)) return null;
     switch (value.type) {
-      case "ready": case "gesture": case "error": return { type: value.type };
+      case "ready": case "gesture": case "error": case "searchPin": return { type: value.type };
       case "attribution":
         return "url" in value && typeof value.url === "string" && attributionLinks.has(value.url)
           ? { type: "attribution", url: value.url } : null;

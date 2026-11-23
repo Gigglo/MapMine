@@ -1,12 +1,17 @@
 import { useState } from "react";
-import { Alert, Image, Linking, StyleSheet, Text, View } from "react-native";
+import { Alert, Linking, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
-import { Bell, Download, Settings2 } from "lucide-react-native";
+import { Bell, BookOpen, Download, Settings2, Star } from "lucide-react-native";
 import IconButton from "../components/ui/IconButton";
 import { Button, Card, Chips, Field, Page, Section, Stat, formatArea, formatDistance, styles } from "../components/ui/primitives";
 import { clearHistory, type Mode } from "../database/repository";
 import { levelFor, milestones } from "../features/achievements/milestones";
+import { interfaceEggs } from "../features/easterEggs/catalog";
+import { EggJournal } from "../features/easterEggs/EggSurfaces";
+import { useEggClicks } from "../features/easterEggs/useEggClicks";
 import NotificationPanel from "../features/engagement/NotificationPanel";
+import Walkthrough from "../features/onboarding/Walkthrough";
+import BrandImage from "../features/profile/BrandImage";
 import { chooseBrandLogo, resetBrandLogo, useBrandLogo } from "../features/profile/branding";
 import { removeCachedExport, sharePersonalData } from "../features/profile/personalExport";
 import { enableTracking, refresh, report, statusText, updatePreferences, useSession } from "../store/session";
@@ -20,11 +25,16 @@ export default function ProfileScreen({ settings = false }: { settings?: boolean
   const preferences = useSession(state => state.preferences);
   const summary = useSession(state => state.summary);
   const status = useSession(state => state.status);
+  const backgroundTracking = useSession(state => state.backgroundTracking);
+  const backgroundAvailable = useSession(state => state.backgroundAvailable);
   const permission = useSession(state => state.permission);
   const savedPlaces = useSession(state => state.places.length);
   const [name, setName] = useState(preferences.name);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState("");
+  const [journalOpen, setJournalOpen] = useState(false);
+  const countLogoClick = useEggClicks(interfaceEggs.logo, 5);
+  const [walkthroughOpen, setWalkthroughOpen] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const xp = summary?.unlocked.reduce((total, award) => total + award.xp, 0) ?? 0;
 
@@ -59,7 +69,9 @@ export default function ProfileScreen({ settings = false }: { settings?: boolean
     {!settings ? <>
       <Card>
         <View style={styles.row}>
-          <Image source={logo} style={{ width: 56, height: 56, borderRadius: 15 }} />
+          <Pressable accessibilityLabel="MapMine logo" onPress={countLogoClick} onLongPress={() => setJournalOpen(true)}>
+            <BrandImage source={logo} style={{ width: 56, height: 56, borderRadius: 15 }} />
+          </Pressable>
           <View style={styles.flex}>
             <Text style={styles.heading}>{preferences.name}</Text>
             <Text style={styles.secondary}>Level {levelFor(xp)} · {xp.toLocaleString()} XP</Text>
@@ -89,6 +101,8 @@ export default function ProfileScreen({ settings = false }: { settings?: boolean
         </View></Card>
       </Section>
       <Button label="Settings" onPress={() => router.push("/settings")} icon={<Settings2 color={colors.text} size={18} />} />
+      <Button label="Star MapMine on GitHub" icon={<Star color={colors.text} size={18} />}
+        onPress={() => void Linking.openURL("https://github.com/Gigglo/MapMine").catch(report)} />
     </> : <>
       <Section title="Profile name">
         <Field value={name} onChangeText={setName} accessibilityLabel="Profile name" maxLength={60} />
@@ -99,9 +113,17 @@ export default function ProfileScreen({ settings = false }: { settings?: boolean
         <Card>
           <Text style={styles.text}>{statusText[status]}</Text>
           <Text style={styles.secondary}>Foreground permission · {permission === "Unknown" ? "Not requested" : permission}</Text>
-          <Text style={styles.secondary}>MapMine records location while the app is active. Precise history stays on this device until you choose to share an export.</Text>
-          <Button label={preferences.tracking ? "Pause tracking" : "Enable foreground tracking"}
+          <Text style={styles.secondary}>Allow background location to record journeys and reveal territory while your screen is locked or another app is open. Precise history stays on this device until you share an export.</Text>
+          <Button label={preferences.tracking ? "Pause tracking" : "Enable tracking"}
             onPress={() => void (preferences.tracking ? updatePreferences({ tracking: 0 }) : enableTracking()).catch(report)} />
+          {preferences.tracking === 1 && permission === "Granted" && backgroundAvailable && (
+            backgroundTracking ? <Text style={styles.secondary}>Background tracking is on.</Text> : <>
+              <Button label="Allow background location" onPress={() => useSession.setState(state => ({
+                backgroundTrackingAttempt: state.backgroundTrackingAttempt + 1,
+              }))} />
+              <Button label="Open location settings" onPress={() => void Linking.openSettings().catch(report)} />
+            </>
+          )}
           {status === "denied" && <Button label="Request location permission" onPress={() => void enableTracking().catch(report)} />}
           {(status === "blocked" || status === "off") && <Button label="Open device settings" onPress={() => void Linking.openSettings().catch(report)} />}
         </Card>
@@ -109,8 +131,8 @@ export default function ProfileScreen({ settings = false }: { settings?: boolean
       <Section title="Appearance and feedback">
         <Card>
           <View style={styles.row}>
-            <Image source={logo} style={{ width: 48, height: 48, borderRadius: 13 }} />
-            <View style={styles.flex}><Text style={styles.text}>App logo</Text><Text style={styles.secondary}>Shown in your profile and opening screen.</Text></View>
+            <BrandImage source={logo} style={{ width: 48, height: 48, borderRadius: 13 }} />
+            <View style={styles.flex}><Text style={styles.text}>App logo</Text><Text style={styles.secondary}>Shown in your profile and on the map.</Text></View>
           </View>
           <Button label="Choose logo" disabled={busy} onPress={() => void execute(chooseBrandLogo, "")} />
           {custom && <Button label="Restore MapMine logo" disabled={busy}
@@ -122,8 +144,11 @@ export default function ProfileScreen({ settings = false }: { settings?: boolean
         <Button label={preferences.haptics ? "Turn haptics off" : "Turn haptics on"}
           onPress={() => void updatePreferences({ haptics: preferences.haptics ? 0 : 1 }).catch(report)} />
       </Section>
+      <Section title="Help">
+        <Button label="App walkthrough" icon={<BookOpen size={16} color={colors.text} />} onPress={() => setWalkthroughOpen(true)} />
+      </Section>
       <Section title="Notifications">
-        <Button label="Manage exploration alerts" onPress={() => setShowNotifications(true)}
+        <Button label="Manage reminders and alerts" onPress={() => setShowNotifications(true)}
           icon={<Bell color={colors.text} size={16} />} />
       </Section>
       <Section title="Privacy and data">
@@ -138,6 +163,10 @@ export default function ProfileScreen({ settings = false }: { settings?: boolean
       </Section>
     </>}
     {feedback ? <Text accessibilityLiveRegion="polite" style={styles.secondary}>{feedback}</Text> : null}
+    {journalOpen && <EggJournal onClose={() => setJournalOpen(false)} />}
+    {walkthroughOpen && <Modal visible animationType="none" onRequestClose={() => setWalkthroughOpen(false)}>
+      <Walkthrough onFinish={() => setWalkthroughOpen(false)} />
+    </Modal>}
     {showNotifications && <NotificationPanel onClose={() => setShowNotifications(false)} />}
   </Page>;
 }

@@ -1,9 +1,10 @@
-import { useMemo, useRef, useState } from "react";
+import { memo, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import BottomSheet, { BottomSheetScrollView, useBottomSheetSpringConfigs } from "@gorhom/bottom-sheet";
+import { router } from "expo-router";
+import { usePostHog } from "posthog-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ChevronDown, ChevronUp, Footprints, MapPin } from "lucide-react-native";
-import Animated, { FadeIn } from "react-native-reanimated";
 import { Button, Stat, formatArea, formatDistance, styles, tap } from "../../components/ui/primitives";
 import { statusText, useSession } from "../../store/session";
 import { colors } from "../../theme/color";
@@ -12,9 +13,10 @@ import PlacesScreen from "../../screens/PlacesScreen";
 import ActivityScreen from "../../screens/ActivityScreen";
 import AchievementsScreen from "../../screens/AchievementsScreen";
 
-export default function ExploreSummary({ position, onChange, onTrack, onSave }: {
+export default memo(function ExploreSummary({ position, onChange, onTrack, onSave }: {
   position: number; onChange: (index: number) => void; onTrack: () => void; onSave: () => void;
 }) {
+  const posthog = usePostHog();
   const sheet = useRef<BottomSheet>(null);
   const [destination, setDestination] = useState<ExploreDestination | null>(null);
   const { bottom } = useSafeAreaInsets();
@@ -22,6 +24,7 @@ export default function ExploreSummary({ position, onChange, onTrack, onSave }: 
   const status = useSession(state => state.status);
   const fix = useSession(state => state.fix !== null);
   const tracking = useSession(state => state.preferences.tracking);
+  const offerBackground = useSession(state => state.backgroundAvailable && !state.backgroundTracking && state.permission === "Granted");
   const stops = useMemo(() => [90, "43%", "83%"], []);
   const spring = useBottomSheetSpringConfigs({ damping: 30, stiffness: 285, mass: 0.85, overshootClamping: true });
   const today = snapshot?.today;
@@ -38,12 +41,12 @@ export default function ExploreSummary({ position, onChange, onTrack, onSave }: 
       onChange(index);
     }}>
     <BottomSheetScrollView key={destination ?? "explore"} keyboardShouldPersistTaps="handled" contentContainerStyle={local.content}>
-      {destination ? <Animated.View entering={FadeIn.duration(160)}>
+      {destination ? <View>
         {destination === "/places" && <PlacesScreen onSheetBack={() => setDestination(null)}
           onShowMap={() => { setDestination(null); sheet.current?.snapToIndex(0); }} />}
         {destination === "/activity" && <ActivityScreen onSheetBack={() => setDestination(null)} />}
         {destination === "/achievements" && <AchievementsScreen onSheetBack={() => setDestination(null)} />}
-      </Animated.View> : <>
+      </View> : <>
       <Pressable accessibilityRole="button" accessibilityState={{ expanded }}
         accessibilityLabel={expanded ? "Collapse exploration summary" : "Expand exploration summary"}
         onPress={() => sheet.current?.snapToIndex(expanded ? 0 : 1)} style={local.summary}>
@@ -55,12 +58,17 @@ export default function ExploreSummary({ position, onChange, onTrack, onSave }: 
         <Chevron color={colors.textSecondary} size={18} />
       </Pressable>
       <View accessibilityElementsHidden={!expanded} importantForAccessibility={expanded ? "auto" : "no-hide-descendants"} style={local.details}>
-      <ExploreMenu onSelect={value => { setDestination(value); sheet.current?.snapToIndex(2); }} />
+      <ExploreMenu onSelect={value => {
+        setDestination(value);
+        sheet.current?.snapToIndex(2);
+        void posthog.screen(value.slice(1));
+      }} />
       <View style={styles.row}>
         <View style={[local.status, active && local.active]} />
         <Text accessibilityLiveRegion="polite" style={[styles.secondary, styles.flex]}>{statusText[status]}</Text>
         <Button label={tracking && ["live", "searching", "weak", "checking"].includes(status) ? "Pause" : "Enable / retry"} onPress={onTrack} />
       </View>
+      {!!tracking && offerBackground && <Button label="Set up background tracking" onPress={() => router.push("/settings")} />}
       <Text accessibilityRole="header" style={styles.heading}>Today</Text>
       <View style={styles.wrap}>
         <Stat label="Distance today" value={formatDistance(today?.meters ?? 0)} />
@@ -80,7 +88,7 @@ export default function ExploreSummary({ position, onChange, onTrack, onSave }: 
       </>}
     </BottomSheetScrollView>
   </BottomSheet>;
-}
+});
 
 const local = StyleSheet.create({
   sheet: { marginHorizontal: 14, shadowColor: "#000", shadowOpacity: 0.28, shadowRadius: 18,

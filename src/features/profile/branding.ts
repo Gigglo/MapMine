@@ -1,11 +1,17 @@
-import { File, Paths } from "expo-file-system";
+import { Directory, File, Paths } from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
+import { ImageManipulator, SaveFormat } from "expo-image-manipulator";
 import type { ImageSourcePropType } from "react-native";
 import { create } from "zustand";
 
 export const bundledLogo: ImageSourcePropType = require("../../../assets/splash-logo.png");
 const useCustomLogo = create<{ uri: string | null }>(() => ({ uri: null }));
-const logoFile = () => new File(Paths.document, "mapmine-logo.jpg");
+
+function savedLogos() {
+  return new Directory(Paths.document).list().filter((entry): entry is File =>
+    entry instanceof File && /^mapmine-logo(?:-\d+)?\.jpg$/.test(entry.name))
+    .sort((a, b) => b.name.localeCompare(a.name, undefined, { numeric: true }));
+}
 
 export function useBrandLogo() {
   const uri = useCustomLogo(state => state.uri);
@@ -13,33 +19,34 @@ export function useBrandLogo() {
 }
 
 export function loadBrandLogo() {
-  const file = logoFile();
-  useCustomLogo.setState({ uri: file.exists && file.size > 0 ? file.uri : null });
+  const file = savedLogos().find(item => item.exists && item.size > 0);
+  useCustomLogo.setState({ uri: file?.uri ?? null });
 }
 
 export async function chooseBrandLogo() {
   const result = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ["images"], allowsEditing: true, aspect: [1, 1], quality: 0.7, base64: true,
+    mediaTypes: ["images"], allowsEditing: true, aspect: [1, 1],
   });
   if (result.canceled) return;
-  const image = result.assets[0]?.base64;
-  if (!image) throw new Error("The selected image could not be read.");
-  if (image.length > 8_000_000) throw new Error("Choose a smaller image for the logo.");
-  const file = logoFile();
-  const staged = new File(Paths.document, "mapmine-logo-pending.jpg");
-  await staged.create({ overwrite: true });
-  try {
-    await staged.write(image, { encoding: "base64" });
-    await staged.move(file, { overwrite: true });
-  } catch (error) {
-    if (staged.exists) await staged.delete();
-    throw error;
+  const asset = result.assets[0];
+  const image = ImageManipulator.manipulate(asset.uri);
+  if (Math.max(asset.width, asset.height) > 512) {
+    image.resize(asset.width >= asset.height ? { width: 512 } : { height: 512 });
   }
-  useCustomLogo.setState({ uri: file.uri + "?v=" + Date.now() });
+  const rendered = await image.renderAsync();
+  const saved = await rendered.saveAsync({ format: SaveFormat.JPEG, compress: 0.82 });
+  const file = new File(Paths.document, `mapmine-logo-${Date.now()}.jpg`);
+  const temporary = new File(saved.uri);
+  await temporary.move(file);
+  useCustomLogo.setState({ uri: file.uri });
+  for (const outdated of savedLogos()) {
+    if (outdated.uri !== file.uri && outdated.exists) {
+      try { outdated.delete(); } catch { /* The selected logo is already available. */ }
+    }
+  }
 }
 
 export async function resetBrandLogo() {
-  const file = logoFile();
-  if (file.exists) await file.delete();
+  for (const file of savedLogos()) if (file.exists) await file.delete();
   useCustomLogo.setState({ uri: null });
 }

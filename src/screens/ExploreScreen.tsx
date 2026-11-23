@@ -1,18 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Image, Keyboard, Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { Keyboard, Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Award, Landmark as LandmarkIcon } from "lucide-react-native";
-import Animated, { FadeInDown, FadeOut } from "react-native-reanimated";
 import IconButton from "../components/ui/IconButton";
 import Panel from "../components/ui/Panel";
 import { Button, Chips, styles, tap } from "../components/ui/primitives";
 import type { Bounds, Mode, Place, Range } from "../database/repository";
+import BadgeImage from "../features/achievements/BadgeImage";
 import { milestones } from "../features/achievements/milestones";
-import { badges } from "../features/achievements/badges";
+import { eggForPoint, interfaceEggs } from "../features/easterEggs/catalog";
+import { discoverEgg } from "../features/easterEggs/discovery";
+import { useEggClicks } from "../features/easterEggs/useEggClicks";
 import type { Point } from "../features/exploration/engine";
 import ExploreSummary from "../features/exploration/ExploreSummary";
 import { simulatedCells, walkingRoute } from "../features/exploration/simulation";
+import LandmarkCelebration from "../features/landmarks/LandmarkCelebration";
 import { findLandmark, type Landmark } from "../features/landmarks/catalog";
 import { findIndiaLandmark } from "../features/landmarks/indiaCatalog";
 import type { MapEvent } from "../features/map/mapBridge";
@@ -21,6 +24,7 @@ import MapSearch from "../features/map/MapSearch";
 import MapView, { type MapHandle } from "../features/map/MapView";
 import { useMapData } from "../features/map/useMapData";
 import PlacePanel, { type PlaceSelection } from "../features/places/PlacePanel";
+import BrandImage from "../features/profile/BrandImage";
 import { useBrandLogo } from "../features/profile/branding";
 import { enableTracking, report, statusText, updatePreferences, useSession } from "../store/session";
 import { colors } from "../theme/color";
@@ -45,6 +49,8 @@ export default function ExploreScreen() {
   const follow = useSession(state => state.following);
   const [sheet, setSheet] = useState(0);
   const [panel, setPanel] = useState<"layers" | null>(null);
+  const countCompassClick = useEggClicks(interfaceEggs.compass, 6);
+  const [searchPin, setSearchPin] = useState<Point | null>(null);
   const [selection, setSelection] = useState<PlaceSelection | null>(null);
   const [landmark, setLandmark] = useState<Landmark | null>(null);
   const [range, setRange] = useState<Range>("Week");
@@ -103,6 +109,10 @@ export default function ExploreScreen() {
       case "error": setReady(false); setFailure(true); break;
       case "gesture": Keyboard.dismiss(); didCenter.current = true; useSession.setState({ following: false }); break;
       case "viewport": setBounds(event.bounds); break;
+      case "searchPin": {
+        if (searchPin) { tap(); setSelection({ point: searchPin }); }
+        break;
+      }
       case "hold": setSelection({ point: event.point }); break;
       case "attribution": void Linking.openURL(event.url).catch(report); break;
       case "landmark": {
@@ -119,7 +129,11 @@ export default function ExploreScreen() {
         break;
       }
     }
-  }, []);
+  }, [searchPin]);
+
+  useEffect(() => {
+    if (ready) map.current?.send({ type: "searchPin", point: searchPin });
+  }, [ready, searchPin]);
 
   useEffect(() => {
     if (!ready) return;
@@ -139,10 +153,21 @@ export default function ExploreScreen() {
     useSession.setState({ target: null });
   }, [ready, target]);
 
-  function requestLocation() {
+  const requestLocation = useCallback(() => {
     if (status === "blocked" || status === "off") void Linking.openSettings().catch(report);
     else void enableTracking().catch(report);
-  }
+  }, [status]);
+
+  const toggleTracking = useCallback(() => {
+    if (tracking && ["live", "searching", "weak", "checking"].includes(status)) {
+      void updatePreferences({ tracking: 0 }).catch(report);
+    } else requestLocation();
+  }, [tracking, status, requestLocation]);
+
+  const saveCurrentLocation = useCallback(() => {
+    const current = useSession.getState().fix;
+    if (current) setSelection({ point: current });
+  }, []);
 
   function locate() {
     if (fix) map.current?.send({ type: "center", point: fix, zoom: 16 });
@@ -165,8 +190,13 @@ export default function ExploreScreen() {
     {sheet < 2 && <>
       <View style={[local.top, { top: top + 12 }]}>
         <View style={local.toolbar}>
-          <MapSearch places={places} onPlace={showPlace} onLandmark={showLandmark} />
-          <IconButton label="Open profile" size={48} onPress={() => { Keyboard.dismiss(); router.push("/profile"); }}><Image source={logo} style={local.profileLogo} /></IconButton>
+          <MapSearch places={places} onPlace={showPlace} onLandmark={showLandmark} onPoint={point => {
+            setSearchPin(point);
+            const egg = eggForPoint(point);
+            if (egg) void discoverEgg(egg);
+            useSession.setState({ target: point, following: false });
+          }} />
+          <IconButton label="Open profile" size={48} onPress={() => { Keyboard.dismiss(); router.push("/profile"); }}><BrandImage source={logo} style={local.profileLogo} /></IconButton>
         </View>
         {preview ? <View style={local.status}><Text style={styles.secondary}>Simulation</Text></View> :
           status !== "live" && <Pressable accessibilityRole="button" onPress={requestLocation} style={local.status}>
@@ -175,7 +205,7 @@ export default function ExploreScreen() {
       </View>
       <View style={[local.controls, { top: top + 77 }]}>
         <MapControls onZoom={amount => map.current?.send({ type: "zoom", amount })}
-          onReset={() => map.current?.send({ type: "north" })}
+          onReset={() => { map.current?.send({ type: "north" }); countCompassClick(); }}
           onLayers={() => { Keyboard.dismiss(); setPanel("layers"); }} onLocate={locate} following={follow} compact={sheet > 0}
           onFollow={() => { if (fix) useSession.setState({ following: !follow }); else requestLocation(); }} />
       </View>
@@ -184,17 +214,14 @@ export default function ExploreScreen() {
       <Text style={styles.text}>The vector map couldn’t load.</Text>
       <Button label="Retry map" onPress={() => { setFailure(false); map.current?.reload(); }} />
     </View>}
-    <ExploreSummary position={sheet} onChange={setSheet} onTrack={() => {
-      if (tracking && ["live", "searching", "weak", "checking"].includes(status)) void updatePreferences({ tracking: 0 }).catch(report);
-      else requestLocation();
-    }} onSave={() => { if (fix) setSelection({ point: fix }); }} />
-    {(unlockedName || award) && sheet === 0 && <Animated.View pointerEvents="none" entering={FadeInDown.springify()}
-      exiting={FadeOut} accessibilityLiveRegion="polite" style={[local.award, { bottom: Math.max(bottom, 10) + 108 }]}>
-      {unlockedName ? <LandmarkIcon size={22} color={colors.success} /> : earnedMilestone ?
-        <Image source={badges[earnedMilestone.id]} style={local.awardBadge} /> : <Award size={22} color={colors.success} />}
+    <ExploreSummary position={sheet} onChange={setSheet} onTrack={toggleTracking} onSave={saveCurrentLocation} />
+    {(unlockedName || (award && sheet === 0)) && <View pointerEvents="none" accessibilityLiveRegion="polite" style={[local.award, { bottom: Math.max(bottom, 10) + 108 }]}>
+      {recentLandmark && <LandmarkCelebration key={recentLandmark.id + recentLandmark.timestamp} />}
+      {unlockedName ? <LandmarkIcon size={22} color={colors.text} /> : earnedMilestone ?
+        <BadgeImage key={earnedMilestone.id} id={earnedMilestone.id} size={34} /> : <Award size={22} color={colors.text} />}
       <View style={local.awardText}><Text style={styles.text} numberOfLines={2}>{unlockedName ?? earnedMilestone?.name}</Text>
         <Text style={styles.secondary}>{unlockedName ? "Location unlocked" : `Achievement unlocked · +${award?.xp} XP`}</Text></View>
-    </Animated.View>}
+    </View>}
     {panel === "layers" && <Panel title="Map layers" onClose={() => setPanel(null)}>
       {modes.map(item => <Pressable key={item.value} accessibilityRole="button" accessibilityState={{ selected: mode === item.value }}
         style={[local.result, mode === item.value && local.selected]} onPress={() => { tap(); void updatePreferences({ mode: item.value }).catch(report); }}>
@@ -220,7 +247,12 @@ export default function ExploreScreen() {
         setPanel(null);
       }} />}
     </Panel>}
-    {selection && <PlacePanel selection={selection} onClose={() => setSelection(null)} onMap={showPlace} />}
+    {searchPin && sheet === 0 && !selection && <View style={[local.pinActions, { bottom: Math.max(bottom, 10) + 106 }]}>
+      <Button label="Save pin" kind="primary" onPress={() => setSelection({ point: searchPin })} />
+      <Button label="Clear" onPress={() => setSearchPin(null)} />
+    </View>}
+    {selection && <PlacePanel selection={selection} onClose={() => setSelection(null)} onMap={showPlace}
+      onSaved={() => { if (selection.point === searchPin) setSearchPin(null); }} />}
     {landmark && <Panel title={landmarkUnlocked ? landmark.name : "Undiscovered landmark"} onClose={() => setLandmark(null)}>
       <Text style={styles.secondary}>{landmark.category}</Text>
       <Text style={styles.text}>{landmarkUnlocked ? `Discovered on ${new Date(landmarkUnlocked).toLocaleDateString()}` :
@@ -242,6 +274,7 @@ export default function ExploreScreen() {
 }
 
 const local = StyleSheet.create({
+  pinActions: { position: "absolute", alignSelf: "center", flexDirection: "row", gap: 8, zIndex: 6 },
   root: { flex: 1, backgroundColor: colors.background },
   top: { position: "absolute", left: 16, right: 16, gap: 7, alignItems: "flex-start", zIndex: 6 },
   brandDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.text },
@@ -257,5 +290,4 @@ const local = StyleSheet.create({
   award: { position: "absolute", left: 16, maxWidth: "72%", flexDirection: "row", alignItems: "center",
     gap: 9, padding: 12, borderRadius: 15, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   awardText: { flexShrink: 1 },
-  awardBadge: { width: 34, height: 34, borderRadius: 8 },
 });

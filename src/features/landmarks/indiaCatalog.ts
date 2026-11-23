@@ -37,9 +37,8 @@ export async function indiaLandmarksInView(bounds: LandmarkBounds) {
   return rows.map(landmark);
 }
 
-export async function indiaLandmarksNear(point: Point) {
-  if (point.latitude < 5.99 || point.latitude > 37.01 || point.longitude < 67.99 || point.longitude > 98.01) return [];
-  const delta = 0.003;
+export async function indiaLandmarksNear(point: Point, delta = 0.003) {
+  if (point.latitude < 6 - delta || point.latitude > 37 + delta || point.longitude < 68 - delta || point.longitude > 98 + delta) return [];
   const width = delta / Math.cos(point.latitude * Math.PI / 180);
   const db = await catalog();
   const rows = await db.getAllAsync<Row>(`

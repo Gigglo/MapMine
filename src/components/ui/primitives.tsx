@@ -10,8 +10,8 @@ export function tap() {
   if (useSession.getState().preferences.haptics) void Haptics.selectionAsync().catch(() => undefined);
 }
 
-export function Page({ title, subtitle, action, onBack, children, embedded = false }: {
-  title: string; subtitle?: string; action?: ReactNode; onBack?: () => void; children: ReactNode; embedded?: boolean;
+export function Page({ title, subtitle, action, onBack, onTitleLongPress, children, embedded = false }: {
+  title: string; subtitle?: string; action?: ReactNode; onBack?: () => void; onTitleLongPress?: () => void; children: ReactNode; embedded?: boolean;
 }) {
   const { top } = useSafeAreaInsets();
   const content = <>
@@ -21,7 +21,7 @@ export function Page({ title, subtitle, action, onBack, children, embedded = fal
           <ArrowLeft size={21} color={colors.text} />
         </Pressable>}
         <View style={styles.flex}>
-          <Text accessibilityRole="header" style={styles.title}>{title}</Text>
+          <Text accessibilityRole="header" onLongPress={onTitleLongPress} style={styles.title}>{title}</Text>
           {subtitle ? <Text style={styles.secondary}>{subtitle}</Text> : null}
         </View>
         {action}
@@ -46,10 +46,8 @@ export function Button({ label, onPress, kind = "secondary", disabled = false, i
 }) {
   return (
     <Pressable accessibilityRole="button" disabled={disabled} onPress={() => { tap(); onPress(); }}
-      style={({ pressed }) => [
-        styles.button, kind === "primary" && styles.primary, kind === "danger" && styles.danger,
-        (disabled || pressed) && styles.dim,
-      ]}>
+      style={({ pressed }) => [styles.button, kind === "primary" && styles.primary, kind === "danger" && styles.danger,
+        (disabled || pressed) && styles.dim]}>
       {icon}
       <Text style={[styles.buttonText, kind === "primary" && styles.primaryText]}>{label}</Text>
     </Pressable>
@@ -100,7 +98,7 @@ export const styles = StyleSheet.create({
   buttonText: { color: colors.text, fontSize: 13, fontWeight: "700" },
   primary: { backgroundColor: colors.text },
   primaryText: { color: colors.background },
-  danger: { backgroundColor: "#482020" },
+  danger: { backgroundColor: "#303030", borderWidth: 1, borderColor: "#707070" },
   dim: { opacity: 0.6 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
   chip: { backgroundColor: colors.elevated, paddingHorizontal: 12, minHeight: 42, justifyContent: "center", borderRadius: 12 },

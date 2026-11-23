@@ -7,7 +7,7 @@ import { styles } from "./primitives";
 
 export default function Panel({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   const { bottom, top } = useSafeAreaInsets();
-  return <Modal transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent visible>
+  return <Modal transparent animationType="none" onRequestClose={onClose} statusBarTranslucent visible>
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={panel.root}>
       <Pressable accessibilityRole="button" accessibilityLabel="Dismiss panel" onPress={onClose} style={StyleSheet.absoluteFill} />
       <View accessibilityViewIsModal style={[panel.surface, { paddingBottom: Math.max(14, bottom), marginTop: top + 12 }]}>

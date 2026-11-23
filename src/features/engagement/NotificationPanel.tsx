@@ -7,10 +7,10 @@ import { updatePreferences, useSession } from "../../store/session";
 import { colors } from "../../theme/color";
 import { milestones } from "../achievements/milestones";
 import { findLandmark } from "../landmarks/catalog";
-import { getExplorationAlertPermission, requestExplorationAlerts, sendTestAlert } from "./notifications";
+import { getExplorationAlertPermission, notificationOptions, requestExplorationAlerts, sendTestAlert, syncReminders } from "./notifications";
 
 export default function NotificationPanel({ onClose }: { onClose: () => void }) {
-  const enabled = useSession(state => Boolean(state.preferences.notifications));
+  const enabled = useSession(state => state.preferences.notifications);
   const awards = useSession(state => state.summary?.unlocked);
   const landmarks = useSession(state => state.unlockedLandmarks);
   const [permission, setPermission] = useState<"unknown" | "allowed" | "available" | "blocked">("unknown");
@@ -35,7 +35,7 @@ export default function NotificationPanel({ onClose }: { onClose: () => void }) 
     return () => { active = false; listener.remove(); };
   }, []);
 
-  async function change(next: boolean) {
+  async function change(option: number, next: boolean) {
     setBusy(true);
     setFeedback("");
     try {
@@ -44,7 +44,9 @@ export default function NotificationPanel({ onClose }: { onClose: () => void }) 
         setFeedback("Allow notifications in device settings to receive alerts.");
         return;
       }
-      await updatePreferences({ notifications: next ? 1 : 0 });
+      const current = useSession.getState().preferences.notifications;
+      await updatePreferences({ notifications: next ? current | option : current & ~option });
+      await syncReminders();
       if (next) setPermission("allowed");
     } catch {
       setFeedback("Couldn’t update notifications. Try again.");
@@ -69,13 +71,29 @@ export default function NotificationPanel({ onClose }: { onClose: () => void }) 
         <Text style={styles.heading}>Exploration alerts</Text>
         <Text style={styles.secondary}>Landmark discoveries and earned achievements</Text>
       </View>
-      <Switch accessibilityLabel="Exploration alerts" value={enabled} disabled={busy}
-        onValueChange={value => void change(value)} />
+      <Switch trackColor={{ false: colors.elevated, true: "#777777" }} accessibilityLabel="Exploration alerts" value={Boolean(enabled & notificationOptions.unlocks)} disabled={busy}
+        onValueChange={value => void change(notificationOptions.unlocks, value)} />
+    </View>
+    <View style={[styles.row, local.setting]}>
+      <View style={styles.flex}>
+        <Text style={styles.heading}>Daily walk reminder</Text>
+        <Text style={styles.secondary}>Every day at 6:00 PM</Text>
+      </View>
+      <Switch trackColor={{ false: colors.elevated, true: "#777777" }} accessibilityLabel="Daily walk reminder" value={Boolean(enabled & notificationOptions.walk)}
+        disabled={busy} onValueChange={value => void change(notificationOptions.walk, value)} />
+    </View>
+    <View style={[styles.row, local.setting]}>
+      <View style={styles.flex}>
+        <Text style={styles.heading}>Nearby suggestions</Text>
+        <Text style={styles.secondary}>Occasional ideas while location tracking is on</Text>
+      </View>
+      <Switch trackColor={{ false: colors.elevated, true: "#777777" }} accessibilityLabel="Nearby suggestions" value={Boolean(enabled & notificationOptions.nearby)}
+        disabled={busy} onValueChange={value => void change(notificationOptions.nearby, value)} />
     </View>
     {permission === "blocked" && <Button label="Open device settings" onPress={() => {
       void Linking.openSettings().catch(() => setFeedback("Couldn’t open device settings."));
     }} />}
-    {enabled && permission === "allowed" && <Button label="Send a test notification" disabled={busy} onPress={() => void test()} />}
+    {enabled !== 0 && permission === "allowed" && <Button label="Send a test notification" disabled={busy} onPress={() => void test()} />}
     {!!feedback && <Text accessibilityLiveRegion="polite" style={styles.secondary}>{feedback}</Text>}
     <Text accessibilityRole="header" style={[styles.heading, local.recentTitle]}>Recent unlocks</Text>
     {recent.length ? recent.map(item => {

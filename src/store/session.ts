@@ -7,14 +7,15 @@ export type Permission = "Unknown" | "Granted" | "Denied" | "Blocked";
 type Session = {
   ready: boolean; error: string | null; status: Status; fix: Fix | null; permission: Permission;
   preferences: data.Preferences; summary: data.Summary | null; places: data.Place[];
-  revision: number; fogRevision: number; trackingAttempt: number; target: Point | null; award: data.Unlock | null;
-  following: boolean;
+  revision: number; sampleRevision: number; historyRevision: number; latestRecordedDay: string | null; fogRevision: number; trackingAttempt: number; target: Point | null; award: data.Unlock | null;
+  following: boolean; backgroundTracking: boolean; backgroundAvailable: boolean; backgroundTrackingAttempt: number;
   unlockedLandmarks: Record<string, number>; recentLandmark: data.LandmarkUnlock | null;
 };
 export const useSession = create<Session>(() => ({
   ready: false, error: null, status: "paused", fix: null, permission: "Unknown",
-  preferences: { name: "Explorer", tracking: 0, haptics: 1, retention: 30, mode: "explore", notifications: 0 },
-  summary: null, places: [], revision: 0, fogRevision: 0, trackingAttempt: 0, target: null, award: null, following: false,
+  preferences: { name: "Explorer", tracking: 0, haptics: 1, retention: 30, mode: "explore", notifications: 0, walkthroughSeen: 0 },
+  summary: null, places: [], revision: 0, sampleRevision: 0, historyRevision: 0, latestRecordedDay: null, fogRevision: 0, trackingAttempt: 0, target: null, award: null, following: false,
+  backgroundTracking: false, backgroundAvailable: false, backgroundTrackingAttempt: 0,
   unlockedLandmarks: {}, recentLandmark: null,
 }));
 
@@ -32,16 +33,19 @@ export async function initialize() {
 
 export async function updatePreferences(preferences: Partial<data.Preferences>) {
   if (preferences.tracking === 0) useSession.setState(state => ({
-    preferences: { ...state.preferences, tracking: 0 }, fix: null, status: "paused", following: false,
+    preferences: { ...state.preferences, tracking: 0 }, fix: null, status: "paused", following: false, backgroundTracking: false,
   }));
   await data.setPreferences(preferences);
-  useSession.setState(state => ({ preferences: { ...state.preferences, ...preferences } }));
+  useSession.setState(state => ({
+    preferences: { ...state.preferences, ...preferences },
+    historyRevision: state.historyRevision + (preferences.retention !== undefined ? 1 : 0),
+  }));
 }
 
 export async function refresh(savedPlaces = false) {
   const summary = await data.summary();
   const places = savedPlaces ? await data.readPlaces() : useSession.getState().places;
-  useSession.setState(state => ({ summary, places, revision: state.revision + 1, fogRevision: state.fogRevision + 1 }));
+  useSession.setState(state => ({ summary, places, revision: state.revision + 1, sampleRevision: state.sampleRevision + 1, historyRevision: state.historyRevision + 1, fogRevision: state.fogRevision + 1 }));
 }
 
 export async function enableTracking() {
@@ -52,6 +56,6 @@ export async function enableTracking() {
 export const statusText: Record<Status, string> = {
   paused: "Tracking paused", checking: "Checking location", denied: "Location access needed",
   blocked: "Location access is blocked", off: "Location services are off", searching: "Finding your location",
-  weak: "Waiting for a more accurate GPS fix", live: "Tracking in foreground", error: "Location unavailable",
+  weak: "Waiting for a more accurate GPS fix", live: "Tracking location", error: "Location unavailable",
 };
 

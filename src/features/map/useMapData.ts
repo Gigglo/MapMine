@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { cellsToMultiPolygon } from "h3-js";
-import { visibleCells, visibleHeat, type Bounds, type Range } from "../../database/repository";
+import { visibleCells, visibleHeat, visiblePlacePhotos, type PlacePhotoMarker, type Bounds, type Range } from "../../database/repository";
 import { report, useSession } from "../../store/session";
 import type { MapHandle } from "./MapView";
+import { placeThumbnail } from "../places/placeThumbnail";
 import { placeGlyphs } from "./placeGlyphs";
 import { landmarksInView } from "../landmarks/catalog";
 import { indiaLandmarksInView } from "../landmarks/indiaCatalog";
@@ -13,26 +14,68 @@ export function useMapData(map: React.RefObject<MapHandle | null>, ready: boolea
   const unlocked = useSession(state => state.unlockedLandmarks);
   const preference = useSession(state => state.preferences.mode);
   const mode = preview ? "explore" : preference;
-  const revision = useSession(state => mode === "explore" ? state.fogRevision : state.revision);
+  const revision = useSession(state => mode === "explore" ? state.fogRevision : mode === "heatmap" ? state.sampleRevision : 0);
+  const sentPhotos = useRef(new Map<number, PlacePhotoMarker>());
   const lastFog = useRef("");
   const [lastView, setLastView] = useState<Bounds | null>(null);
 
   useEffect(() => {
-    if (!ready) { lastFog.current = ""; return; }
+    if (!ready) { lastFog.current = ""; sentPhotos.current.clear(); return; }
     map.current?.send({ type: "placeGlyphs", images: placeGlyphs });
   }, [map, ready]);
 
   useEffect(() => {
     if (!ready) return;
-    map.current?.send({ type: "mode", mode }, { type: "places", places: places.map(({ id, latitude, longitude, icon }) =>
+    map.current?.send({ type: "mode", mode });
+  }, [map, ready, mode]);
+
+  useEffect(() => {
+    if (!ready) return;
+    map.current?.send({ type: "places", places: places.map(({ id, latitude, longitude, icon }) =>
       ({ id, latitude, longitude, icon: Object.hasOwn(placeGlyphs, icon) ? icon : "Pin" })) });
-  }, [map, ready, mode, places]);
+  }, [map, ready, places]);
 
   useEffect(() => {
     if (!bounds) return;
-    const timer = setTimeout(() => setLastView(bounds), 150);
+    const timer = setTimeout(() => setLastView(previous =>
+      previous && previous.zoom === bounds.zoom && previous.north === bounds.north &&
+        previous.south === bounds.south && previous.east === bounds.east && previous.west === bounds.west
+        ? previous : bounds), 150);
     return () => clearTimeout(timer);
   }, [bounds]);
+
+  useEffect(() => {
+    if (!ready || !lastView) return;
+    let active = true;
+    if (!places.some(place => place.hasPhoto)) {
+      if (sentPhotos.current.size) {
+        map.current?.send({ type: "visiblePlacePhotos", ids: [] });
+        sentPhotos.current.clear();
+      }
+      return;
+    }
+    void visiblePlacePhotos(lastView).then(async photos => {
+      if (!active) return;
+      const target = map.current;
+      if (!target) return;
+      target.send({ type: "visiblePlacePhotos", ids: photos.map(photo => photo.id) });
+      const visible = new Set(photos.map(photo => photo.id));
+      for (const id of sentPhotos.current.keys()) {
+        if (!visible.has(id)) sentPhotos.current.delete(id);
+      }
+      for (const photo of photos) {
+        const previous = sentPhotos.current.get(photo.id);
+        if (!previous || previous.name !== photo.name || previous.latitude !== photo.latitude ||
+          previous.longitude !== photo.longitude || previous.jpeg !== photo.jpeg) {
+          const jpeg = await placeThumbnail(photo.jpeg).catch(() => photo.jpeg);
+          if (!active) return;
+          target.send({ type: "placePhoto", photo: { ...photo, jpeg } });
+        }
+        sentPhotos.current.set(photo.id, photo);
+      }
+    }).catch(report);
+    return () => { active = false; };
+  }, [map, ready, lastView, places]);
 
   useEffect(() => {
     if (!ready || !lastView) return;

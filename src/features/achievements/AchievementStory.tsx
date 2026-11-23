@@ -1,67 +1,62 @@
-import { useRef, useState, type ComponentRef } from "react";
-import { Image, Platform, StyleSheet, Text, View, useWindowDimensions } from "react-native";
-import { Share2 } from "lucide-react-native";
+import { useEffect, useRef, useState, type ComponentRef } from "react";
+import { Platform, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { Navigation, Share2 } from "lucide-react-native";
 import { captureRef, releaseCapture } from "react-native-view-shot";
 import { ImageManipulator, SaveFormat } from "expo-image-manipulator";
 import * as Sharing from "expo-sharing";
+import { usePostHog } from "posthog-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Panel from "../../components/ui/Panel";
 import { Button, styles } from "../../components/ui/primitives";
 import { colors } from "../../theme/color";
-import type { Unlock } from "../../database/repository";
-import { bundledLogo } from "../profile/branding";
-import { badges } from "./badges";
+import { readAchievementRoute, type RoutePoint, type Unlock } from "../../database/repository";
+import RouteMap from "../activity/RouteMap";
+import BadgeImage from "./BadgeImage";
 import type { Milestone } from "./milestones";
 
 export type EarnedStory = { milestone: Milestone; award: Unlock };
-const exportSize = { width: 1080, height: 1920 };
-const cardBackground = require("../../../assets/achievement-story-background.png");
-const heartBackdrop = [
-  { glyph: "💗", left: -24, top: 50, size: 104, opacity: 0.3, angle: "-16deg" },
-  { glyph: "💖", left: 195, top: 162, size: 105, opacity: 0.3, angle: "14deg" },
-  { glyph: "💕", left: -16, top: 274, size: 84, opacity: 0.3, angle: "-12deg" },
-  { glyph: "🫶", left: 183, top: 410, size: 88, opacity: 0.3, angle: "13deg" },
-];
-const celebration = [
-  { glyph: "✦", left: 56, top: 112, size: 17 },
-  { glyph: "✧", left: 67, top: 173, size: 14 },
-  { glyph: "✦", left: 213, top: 95, size: 21 },
-  { glyph: "🎉", left: 210, top: 166, size: 24 },
-];
+const dimensions = { width: 350, height: 200 };
+const exportSize = { width: 1400, height: 800 };
 
 async function exportStory(card: ComponentRef<typeof View>) {
   const raw = await captureRef(card, { format: "png", result: "tmpfile", useRenderInContext: Platform.OS === "ios" });
   try {
     const image = await ImageManipulator.manipulate(raw).resize(exportSize).renderAsync();
-    const result = await image.saveAsync({ format: SaveFormat.PNG });
-    return result.uri;
+    return (await image.saveAsync({ format: SaveFormat.PNG })).uri;
   } finally {
     releaseCapture(raw);
   }
 }
 
 export default function AchievementStory({ milestone, award, onClose }: EarnedStory & { onClose: () => void }) {
+  const posthog = usePostHog();
   const window = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const space = Math.min(window.height * 0.88, window.height - insets.top - 12) - Math.max(14, insets.bottom) - 138;
-  const width = 9 * Math.floor(Math.min(288, window.width - 48, Math.max(126, space * 9 / 16)) / 9);
-  const unit = width / 288;
+  const width = Math.min(460, window.width - 44, Math.max(180, space * dimensions.width / dimensions.height));
+  const unit = width / dimensions.width;
   const card = useRef<ComponentRef<typeof View>>(null);
-  const captured = useRef<string | null>(null);
   const sharing = useRef(false);
   const [laidOut, setLaidOut] = useState(false);
-  const [imageReady, setImageReady] = useState(false);
-  const [logoReady, setLogoReady] = useState(false);
-  const [backgroundReady, setBackgroundReady] = useState(false);
+  const [badgeReady, setBadgeReady] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
+  const [points, setPoints] = useState<RoutePoint[]>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const accent = "#FFDBA5";
   const earned = new Date(award.timestamp).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
-  const zone = (top: number) => ({ top: top * unit, left: 21 * unit, right: 21 * unit });
+  const canShare = laidOut && badgeReady && points !== undefined && (!points.length || mapReady) && !busy;
+
+  useEffect(() => {
+    let active = true;
+    void readAchievementRoute(award.timestamp).then(value => { if (active) setPoints(value); })
+      .catch(() => {
+        if (active) { setPoints([]); setError("Could not load the achievement route."); }
+      });
+    return () => { active = false; };
+  }, [award.timestamp]);
 
   async function share() {
-    const target = card.current;
-    if (!target || !laidOut || !imageReady || !logoReady || !backgroundReady || sharing.current) return;
+    if (!card.current || !canShare || sharing.current) return;
     sharing.current = true;
     setBusy(true);
     setError("");
@@ -70,98 +65,65 @@ export default function AchievementStory({ milestone, award, onClose }: EarnedSt
         setError("Image sharing is unavailable on this device.");
         return;
       }
-      // Capture the laid-out view first. Resize the resulting bitmap separately.
-      captured.current ??= await exportStory(target);
-      await Sharing.shareAsync(captured.current, {
+      const captured = await exportStory(card.current);
+      await Sharing.shareAsync(captured, {
         mimeType: "image/png", UTI: "public.png", dialogTitle: "Share achievement",
       });
     } catch {
-      captured.current = null;
-      setError("Couldn’t share the image. Try again.");
+      setError("Could not share the image. Try again.");
     } finally { sharing.current = false; setBusy(false); }
   }
 
   return <Panel title="Share achievement" onClose={onClose}>
-    <View style={local.preview}>
-      <View ref={card} collapsable={false} onLayout={() => setLaidOut(true)}
-        style={[local.card, { width, height: 512 * unit }]}>
-        <Image source={cardBackground} resizeMode="stretch" fadeDuration={0}
-          onLoad={() => setBackgroundReady(true)} onError={() => setError("Couldn’t load the card background.")}
-          accessible={false} style={[StyleSheet.absoluteFill, { width: "100%", height: "100%" }]} />
-        <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants"
-          style={StyleSheet.absoluteFill}>
-          {heartBackdrop.map(({ glyph, left, top, size, opacity, angle }) => (
-            <Text key={glyph} allowFontScaling={false} style={[local.overlay, {
-              left: left * unit, top: top * unit, fontSize: size * unit, opacity, transform: [{ rotate: angle }],
-            }]}>{glyph}</Text>
-          ))}
-          {celebration.map(({ glyph, left, top, size }) => (
-            <Text key={left} allowFontScaling={false} style={[local.overlay, {
-              left: left * unit, top: top * unit, fontSize: size * unit, color: accent,
-            }]}>{glyph}</Text>
-          ))}
+    <View ref={card} collapsable={false} onLayout={() => setLaidOut(true)}
+      style={[local.card, { width, height: dimensions.height * unit, padding: 17 * unit, borderRadius: 13 * unit }]}>
+      <View style={local.line}>
+        <Text allowFontScaling={false} style={[local.brand, { fontSize: 17 * unit }]}>MapMine</Text>
+        <Text allowFontScaling={false} style={[local.kicker, { fontSize: 9 * unit }]}>ACHIEVEMENT UNLOCKED</Text>
+      </View>
+      <View style={[local.body, { gap: 14 * unit }]}>
+        <View style={[local.copy, { gap: 7 * unit }]}>
+          <Text allowFontScaling={false} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.68}
+            style={[local.title, { fontSize: 25 * unit, lineHeight: 27 * unit }]}>{milestone.name}</Text>
+          <Text allowFontScaling={false} numberOfLines={3} adjustsFontSizeToFit minimumFontScale={0.78}
+            style={[local.description, { fontSize: 11 * unit, lineHeight: 14 * unit }]}>{milestone.description}</Text>
         </View>
-        <View style={[local.line, zone(22)]}>
-          <View style={[local.lockup, { gap: 8 * unit }]}>
-            <Image source={bundledLogo} fadeDuration={0} onLoad={() => setLogoReady(true)}
-              onError={() => setError("Couldn’t load the MapMine logo.")}
-              style={{ width: 24 * unit, height: 24 * unit, borderRadius: 6 * unit }} />
-            <Text allowFontScaling={false} style={[local.brand, { fontSize: 14 * unit }]}>MapMine</Text>
-          </View>
-        </View>
-        <View pointerEvents="none" style={[local.medallion, {
-          top: 91 * unit, left: 90 * unit, width: 108 * unit, height: 108 * unit,
-          borderRadius: 30 * unit, borderColor: accent + "90", backgroundColor: "#FFCA7340",
-        }]} />
-        <View style={[local.artFrame, {
-          top: 105 * unit, left: 103 * unit, width: 82 * unit, height: 82 * unit,
-          borderRadius: 24 * unit, borderColor: accent + "80", padding: 3 * unit,
-        }]}>
-          <Image source={badges[milestone.id]} resizeMode="cover" fadeDuration={0}
-            onLoad={() => setImageReady(true)} onError={() => setError("Couldn’t load the badge image.")}
-            style={[local.art, { borderRadius: 21 * unit }]} />
-        </View>
-        <Text allowFontScaling={false} style={[local.overlay, local.eyebrow, local.center, zone(230), { color: accent, fontSize: 10 * unit }]}>
-          ACHIEVEMENT UNLOCKED
-        </Text>
-        <Text allowFontScaling={false} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7}
-          style={[local.overlay, local.title, local.center, zone(251), { fontSize: 30 * unit, lineHeight: 33 * unit, height: 70 * unit }]}>
-          {milestone.name}
-        </Text>
-        <View style={[local.overlay, local.earnedFor, zone(344), {
-          paddingTop: 13 * unit, gap: 6 * unit, borderColor: accent + "40",
-        }]}>
-          <Text allowFontScaling={false} style={[local.eyebrow, { color: accent, fontSize: 9 * unit }]}>EARNED FOR</Text>
-          <Text allowFontScaling={false} numberOfLines={3}
-            style={[local.description, { fontSize: 13 * unit, lineHeight: 17 * unit }]}>{milestone.description}</Text>
-        </View>
-        <View style={[local.line, local.footer, zone(441), { paddingHorizontal: 13 * unit, height: 45 * unit, borderRadius: 23 * unit }]}>
-          <Text allowFontScaling={false} style={[local.xp, { color: "#FFF7E9", fontSize: 17 * unit }]}>+{award.xp.toLocaleString()} XP</Text>
-          <Text allowFontScaling={false} style={[local.description, { fontSize: 11 * unit }]}>{earned}</Text>
+        <View style={[local.artwork, { width: 108 * unit, gap: 7 * unit }]}>
+          <BadgeImage id={milestone.id} size={32 * unit} onReady={() => setBadgeReady(true)} />
+          {(points === undefined || points.length > 0) && <View style={[local.mapFrame, { borderRadius: 5 * unit }]}>
+            {points ? <RouteMap points={points} onMapReady={setMapReady} />
+              : <View style={local.emptyMap}><Navigation size={15 * unit} color="#aaa" /></View>}
+          </View>}
         </View>
       </View>
+      <View style={[local.line, local.footer, { paddingTop: 8 * unit }]}>
+        <Text allowFontScaling={false} style={[local.xp, { fontSize: 13 * unit }]}>+{award.xp.toLocaleString()} XP</Text>
+        <Text allowFontScaling={false} style={[local.date, { fontSize: 10 * unit }]}>{earned}</Text>
+      </View>
     </View>
-    <Button label={busy ? "Preparing image…" : "Share story image"} kind="primary" disabled={!laidOut || !imageReady || !logoReady || !backgroundReady || busy}
-      icon={<Share2 color={colors.background} size={16} />} onPress={() => void share()} />
+    <Button label={busy ? "Preparing image..." : "Share card"} kind="primary" disabled={!canShare}
+      icon={<Share2 color={colors.background} size={16} />} onPress={() => {
+        posthog.capture("button_pressed", { button_name: "share_achievement_card" });
+        void share();
+      }} />
     {error && <Text accessibilityLiveRegion="polite" style={styles.secondary}>{error}</Text>}
   </Panel>;
 }
 
 const local = StyleSheet.create({
-  preview: { alignSelf: "center", borderRadius: 15, overflow: "hidden" },
-  card: { backgroundColor: "#601F10", overflow: "hidden" },
-  overlay: { position: "absolute" },
-  line: { position: "absolute", flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  lockup: { flexDirection: "row", alignItems: "center" },
-  brand: { color: colors.text, fontWeight: "600", letterSpacing: -0.15 },
-  medallion: { position: "absolute", borderWidth: 1 },
-  center: { textAlign: "center" },
-  earnedFor: { borderTopWidth: 1 },
-  artFrame: { position: "absolute", borderWidth: 1 },
-  art: { width: "100%", height: "100%", backgroundColor: colors.elevated },
-  eyebrow: { letterSpacing: 1.4, fontWeight: "600" },
-  title: { color: "#FFF8EB", fontWeight: "700", letterSpacing: -0.6, includeFontPadding: false },
-  description: { color: "#FFE7D1", fontWeight: "500" },
-  footer: { borderWidth: 1, borderColor: "#FFE4AE58", backgroundColor: "#FFDF9926" },
-  xp: { fontWeight: "700" },
+  card: { alignSelf: "center", backgroundColor: "#090909", borderColor: "#444",
+    borderWidth: StyleSheet.hairlineWidth, overflow: "hidden", justifyContent: "space-between" },
+  line: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  brand: { color: "#fff", fontWeight: "700", letterSpacing: -0.45 },
+  kicker: { color: "#ccc", fontWeight: "600", letterSpacing: 0.65 },
+  body: { flexDirection: "row", alignItems: "center" },
+  copy: { flex: 1, minWidth: 0 },
+  title: { color: "#fff", fontWeight: "700", letterSpacing: -0.6 },
+  description: { color: "#ddd" },
+  artwork: { alignItems: "flex-end", justifyContent: "center" },
+  mapFrame: { width: "100%", borderWidth: StyleSheet.hairlineWidth, borderColor: "#444", overflow: "hidden" },
+  emptyMap: { aspectRatio: 320 / 180, backgroundColor: "#161616", alignItems: "center", justifyContent: "center" },
+  footer: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "#383838" },
+  xp: { color: "#fff", fontWeight: "700", fontVariant: ["tabular-nums"] },
+  date: { color: "#ccc", fontVariant: ["tabular-nums"] },
 });

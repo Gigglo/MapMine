@@ -1,13 +1,35 @@
-import { useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { ChevronRight, MapPin, Plus, Search, X } from "lucide-react-native";
 import { router } from "expo-router";
 import { Button, Chips, Field, Page, styles, tap } from "../components/ui/primitives";
 import PlacePanel, { categories, PlaceIcon, type PlaceSelection } from "../features/places/PlacePanel";
+import { readPlaceCover, type Place } from "../database/repository";
+import { placeThumbnail } from "../features/places/placeThumbnail";
+import MemoryImage from "../features/places/MemoryImage";
 import { report, updatePreferences, useSession } from "../store/session";
+import { interfaceEggs } from "../features/easterEggs/catalog";
+import { discoverEgg } from "../features/easterEggs/discovery";
 import { colors } from "../theme/color";
 
 const filters = ["All", ...categories] as const;
+
+const PlacePreview = memo(function PlacePreview({ place }: { place: Place }) {
+  const [cover, setCover] = useState<string>();
+  useEffect(() => {
+    let active = true;
+    if (place.hasPhoto) void readPlaceCover(place.id).then(async image => {
+      if (!active || !image) return;
+      const preview = await placeThumbnail(image).catch(() => image);
+      if (active) setCover(preview);
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [place]);
+  const icon = <PlaceIcon icon={place.icon} />;
+  return <View style={local.icon}>
+    {place.hasPhoto && cover ? <MemoryImage jpeg={cover} style={local.thumbnail} resizeMode="cover" fallback={icon} /> : icon}
+  </View>;
+});
 
 export default function PlacesScreen({ onSheetBack, onShowMap }: { onSheetBack?: () => void; onShowMap?: () => void } = {}) {
   const back = onSheetBack ?? (() => router.navigate("/"));
@@ -20,7 +42,7 @@ export default function PlacesScreen({ onSheetBack, onShowMap }: { onSheetBack?:
   const filtered = places.filter(place => (category === "All" || place.category === category) &&
     [place.name, place.category, place.notes].join(" ").toLowerCase().includes(query.trim().toLowerCase()));
 
-  return <Page title="Places" embedded={Boolean(onSheetBack)} onBack={back}
+  return <Page title="Places" onTitleLongPress={() => void discoverEgg(interfaceEggs.places)} embedded={Boolean(onSheetBack)} onBack={back}
     action={<Button label="Add" onPress={() => fix ? setSelection({ point: fix }) : showMap()}
       icon={<Plus size={15} color={colors.text} />} />}>
     <View style={local.search}>
@@ -34,7 +56,7 @@ export default function PlacesScreen({ onSheetBack, onShowMap }: { onSheetBack?:
     {filtered.length ? <View style={local.list}>{filtered.map((place, index) => <Pressable key={place.id} accessibilityRole="button"
       style={({ pressed }) => [local.place, index > 0 && local.divider, pressed && styles.dim]}
       onPress={() => { tap(); setSelection({ point: place, place }); }}>
-      <View style={local.icon}><PlaceIcon icon={place.icon} /></View>
+      <PlacePreview place={place} />
       <View style={styles.flex}><Text style={styles.text}>{place.name}</Text><Text style={styles.secondary}>{place.category}</Text></View>
       <ChevronRight color={colors.textSecondary} size={16} />
     </Pressable>)}</View> : <View style={local.empty}>
@@ -60,6 +82,7 @@ const local = StyleSheet.create({
   list: { backgroundColor: colors.surface, borderRadius: 15, paddingHorizontal: 12 },
   place: { flexDirection: "row", minHeight: 62, alignItems: "center", gap: 12, paddingVertical: 8 },
   divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
-  icon: { width: 40, height: 40, borderRadius: 12, backgroundColor: colors.elevated, alignItems: "center", justifyContent: "center" },
+  thumbnail: { width: "100%", height: "100%" },
+  icon: { width: 40, height: 40, borderRadius: 9, overflow: "hidden", backgroundColor: colors.elevated, alignItems: "center", justifyContent: "center" },
   empty: { alignItems: "flex-start", gap: 10, backgroundColor: colors.surface, borderRadius: 18, padding: 18 },
 });

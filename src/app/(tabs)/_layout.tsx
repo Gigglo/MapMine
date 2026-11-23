@@ -3,7 +3,7 @@ import { colors } from "../../theme/color";
 
 export default function TabLayout() {
   return <Tabs detachInactiveScreens={false} backBehavior="firstRoute"
-    tabBar={() => null} screenOptions={{ headerShown: false, animation: "fade", sceneStyle: { backgroundColor: colors.background } }}>
+    tabBar={() => null} screenOptions={{ headerShown: false, animation: "none", sceneStyle: { backgroundColor: colors.background } }}>
     <Tabs.Screen name="index" options={{ title: "Explore" }} />
     <Tabs.Screen name="places" options={{ title: "Places" }} />
     <Tabs.Screen name="activity" options={{ title: "Activity" }} />

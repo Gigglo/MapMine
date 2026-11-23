@@ -16,7 +16,15 @@ export const html = `
 <style>
 html, body, #map { margin: 0; background: #101010; width: 100%; height: 100%; overflow: hidden; }
 .maplibregl-ctrl-top-left { top: 192px; }
-.player-marker { width: 30px; height: 34px; pointer-events: none; filter: drop-shadow(0 2px 3px #000c); }
+.search-pin { width: 26px; height: 26px; border: 2px solid #111; border-radius: 50% 50% 50% 4px;
+  background: #fff; box-shadow: 0 2px 5px #000b; z-index: 3; cursor: pointer; }
+.search-pin::after { content: ""; display: block; width: 8px; height: 8px; margin: auto; border-radius: 50%; background: #151515; }
+.place-photo { width: 38px; height: 38px; box-sizing: border-box; padding: 2px; border: 1px solid #fff;
+  border-radius: 7px; background: #111; box-shadow: 0 2px 6px #000b; cursor: pointer; z-index: 2; }
+.place-photo.dimmed { opacity: 0.2; }
+.place-photo img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 4px; pointer-events: none; }
+.maplibregl-canvas { filter: grayscale(1); }
+.player-marker { z-index: 3; width: 30px; height: 34px; pointer-events: none; filter: drop-shadow(0 2px 3px #000c); }
 .player-marker::before, .player-marker::after { content: ""; position: absolute; background: #101010; inset: 0; clip-path: polygon(50% 3%, 96% 91%, 50% 70%, 4% 91%); }
 .player-marker::after { background: #f5f5f5; inset: 4px 5px 5px; }
 </style>
@@ -41,6 +49,7 @@ html, body, #map { margin: 0; background: #101010; width: 100%; height: 100%; ov
     const collection = (features = []) => ({ type: "FeatureCollection", features });
     const feature = (type, coordinates, properties = {}) => ({ type: "Feature", geometry: { type, coordinates }, properties });
     const coords = point => [point.longitude, point.latitude];
+    let searchPin;
     let marker, markerFrame, ready = false, hold, startedAt, held = false;
     const timeout = setTimeout(() => { if (!ready) send("error"); }, 20000);
     function viewport() {
@@ -60,7 +69,7 @@ html, body, #map { margin: 0; background: #101010; width: 100%; height: 100%; ov
     }
     function location(point, heading, follow) {
       cancelAnimationFrame(markerFrame);
-      if (!point) { marker?.remove(); marker = undefined; return; }
+      if (!point) { marker?.remove(); marker = undefined; updatePhotoOverlap(); return; }
       const [lng, lat] = coords(point);
       const hasHeading = typeof heading === "number" && Number.isFinite(heading) && heading >= 0;
       if (!marker) {
@@ -73,22 +82,92 @@ html, body, #map { margin: 0; background: #101010; width: 100%; height: 100%; ov
         const delta = (lng - old.lng + 540) % 360 - 180;
         const rotation = marker.getRotation();
         const turn = hasHeading ? ((heading - rotation) % 360 + 540) % 360 - 180 : 0;
-        const start = performance.now();
-        const animate = now => {
-          const t = Math.min(1, (now - start) / 550);
-          const ease = t * t * (3 - 2 * t);
-          marker.setLngLat([old.lng + delta * ease, old.lat + (lat - old.lat) * ease])
-            .setRotation(rotation + turn * ease);
-          if (t < 1) markerFrame = requestAnimationFrame(animate);
-        };
-        markerFrame = requestAnimationFrame(animate);
+        const destination = map.project([old.lng + delta, lat]);
+        const origin = map.project(old);
+        if (Math.hypot(destination.x - origin.x, destination.y - origin.y) < 1 && Math.abs(turn) < 2) {
+          // Track the latest coordinate without requesting a frame for subpixel movement.
+          if (delta || lat !== old.lat || turn) marker.setLngLat([old.lng + delta, lat]).setRotation(rotation + turn);
+        } else {
+          const start = performance.now();
+          const animate = now => {
+            const t = Math.min(1, (now - start) / 550);
+            const ease = t * t * (3 - 2 * t);
+            marker.setLngLat([old.lng + delta * ease, old.lat + (lat - old.lat) * ease])
+              .setRotation(rotation + turn * ease);
+            updatePhotoOverlap();
+            if (t < 1) markerFrame = requestAnimationFrame(animate);
+          };
+          markerFrame = requestAnimationFrame(animate);
+        }
       }
-      if (follow) map.easeTo({ center: [lng, lat], duration: 650 });
+      updatePhotoOverlap();
+      if (follow) {
+        const center = map.getCenter();
+        const target = [lng + 360 * Math.round((center.lng - lng) / 360), lat];
+        const from = map.project(center);
+        const to = map.project(target);
+        if (Math.hypot(from.x - to.x, from.y - to.y) >= 6) map.easeTo({ center: target, duration: 650 });
+      }
     }
     function iconImage(name, uri) {
       const image = new Image();
       image.onload = () => { if (!map.hasImage(name)) map.addImage(name, image, { pixelRatio: 2 }); };
       image.src = uri;
+    }
+    const placePhotos = new Map();
+    let landmarkPoints = [];
+    function updatePhotoOverlap() {
+      if (!placePhotos.size) return;
+      const player = marker?.getLngLat();
+      const screen = player && map.project(player);
+      for (const { marker: photo, element } of placePhotos.values()) {
+        const { lng, lat } = photo.getLngLat();
+        const position = { lng, lat };
+        if (player) position.lng += 360 * Math.round((player.lng - position.lng) / 360);
+        const point = map.project(position);
+        element.classList.toggle("dimmed", !!screen && Math.abs(screen.x - point.x) < 35 &&
+          Math.abs(screen.y - (point.y - 8)) < 36);
+      }
+    }
+    function renderLandmarks() {
+      const visiblePhotos = Array.from(placePhotos.values()).filter(entry => !entry.element.hidden);
+      const covered = point => !point.discovered && visiblePhotos.some(({ point: photo }) =>
+        Math.abs(point.latitude - photo.latitude) < 0.00032 &&
+        Math.abs((point.longitude - photo.longitude + 540) % 360 - 180) < 0.00032);
+      map.getSource("landmarks").setData(collection(landmarkPoints.filter(point => !covered(point)).map(point =>
+        feature("Point", coords(point), { id: point.id, icon: point.discovered ? "landmark-found" : "landmark-mystery" }))));
+    }
+    function showPlacePhoto(photo) {
+      const previous = placePhotos.get(photo.id);
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "place-photo";
+      button.setAttribute("aria-label", "Open " + photo.name);
+      button.addEventListener("click", event => {
+        event.stopPropagation();
+        send("place", { id: photo.id });
+      });
+      const image = document.createElement("img");
+      image.alt = "";
+      image.draggable = false;
+      image.onload = () => {
+        if (placePhotos.get(photo.id)?.element !== button) return;
+        button.hidden = false;
+        updatePhotoOverlap();
+        renderLandmarks();
+      };
+      image.onerror = () => {
+        if (placePhotos.get(photo.id)?.element !== button) return;
+        placePhotos.get(photo.id).marker.remove();
+        placePhotos.delete(photo.id);
+        renderLandmarks();
+      };
+      button.hidden = true;
+      button.appendChild(image);
+      previous?.marker.remove();
+      const pin = new maplibregl.Marker({ element: button, offset: [0, -8] }).setLngLat(coords(photo)).addTo(map);
+      placePhotos.set(photo.id, { marker: pin, point: photo, element: button });
+      image.src = "data:image/jpeg;base64," + photo.jpeg;
     }
     function landmarkBadge(path, ink, border) {
       return "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 28 28">' +
@@ -99,6 +178,19 @@ html, body, #map { margin: 0; background: #101010; width: 100%; height: 100%; ov
       if (!ready) return;
       commands.forEach(command => {
         switch (command.type) {
+          case "searchPin": {
+            searchPin?.remove();
+            searchPin = undefined;
+            if (!command.point) break;
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "search-pin";
+            button.setAttribute("aria-label", "Save this pin");
+            button.addEventListener("click", event => { event.stopPropagation(); send("searchPin"); });
+            searchPin = new maplibregl.Marker({ element: button, anchor: "bottom" })
+              .setLngLat(coords(command.point)).addTo(map);
+            break;
+          }
           case "zoom": map.easeTo({ zoom: map.getZoom() + command.amount, duration: 260 }); break;
           case "north": map.easeTo({ bearing: 0, duration: 400 }); break;
           case "center": map.flyTo({ center: coords(command.point), zoom: command.zoom ?? map.getZoom(), essential: false }); break;
@@ -117,9 +209,23 @@ html, body, #map { margin: 0; background: #101010; width: 100%; height: 100%; ov
               iconImage("place-" + name, uri);
             }
             break;
+          case "placePhoto":
+            showPlacePhoto(command.photo);
+            break;
+          case "visiblePlacePhotos": {
+            let removed = false;
+            for (const [id, entry] of placePhotos) {
+              if (command.ids.includes(id)) continue;
+              entry.marker.remove();
+              placePhotos.delete(id);
+              removed = true;
+            }
+            if (removed) renderLandmarks();
+            break;
+          }
           case "landmarks":
-            map.getSource("landmarks").setData(collection(command.points.map(point =>
-              feature("Point", coords(point), { id: point.id, icon: point.discovered ? "landmark-found" : "landmark-mystery" }))));
+            landmarkPoints = command.points;
+            renderLandmarks();
             break;
           case "mode":
             ["fog", "frontier", "heat", "places", "place-icons"].forEach(layer => {
@@ -153,7 +259,7 @@ html, body, #map { margin: 0; background: #101010; width: 100%; height: 100%; ov
       map.addLayer({ id: "heat", type: "heatmap", source: "heat", layout: { visibility: "none" }, paint: {
         "heatmap-weight": ["interpolate", ["linear"], ["get", "weight"], 0, 0.1, 10, 0.65, 180, 1],
         "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 4, 8, 17, 34],
-        "heatmap-color": ["interpolate", ["linear"], ["heatmap-density"], 0,"rgba(96,165,250,0)",0.3,"#28496e",0.65,"#60a5fa",1,"#f5f5f5"]
+        "heatmap-color": ["interpolate", ["linear"], ["heatmap-density"], 0,"rgba(255,255,255,0)",0.3,"#444444",0.65,"#aaaaaa",1,"#f5f5f5"]
       } });
       map.addLayer({ id: "places", type: "circle", source: "places", paint: {
         "circle-radius": 6, "circle-color": "#f5f5f5", "circle-stroke-color": "#101010", "circle-stroke-width": 3
@@ -162,7 +268,7 @@ html, body, #map { margin: 0; background: #101010; width: 100%; height: 100%; ov
         visibility: "none", "icon-image": ["get", "icon"]
       } });
       iconImage("landmark-mystery", landmarkBadge("M10.5 10.5a3.5 3.5 0 1 1 5.8 2.6c-1.4 1.2-2.3 1.5-2.3 3.3m0 3.6h.01", "#f5f5f5", "#a0a0a0"));
-      iconImage("landmark-found", landmarkBadge("m9 14 3.3 3.4 6.7-7", "#34d399", "#34d399"));
+      iconImage("landmark-found", landmarkBadge("m9 14 3.3 3.4 6.7-7", "#ffffff", "#d0d0d0"));
       map.addLayer({ id: "landmark-icons", type: "symbol", source: "landmarks", minzoom: ${landmarkMarkerZoom}, layout: {
         "icon-image": ["get", "icon"], "icon-padding": 4
       } });
@@ -171,6 +277,7 @@ html, body, #map { margin: 0; background: #101010; width: 100%; height: 100%; ov
       send("ready");
       viewport();
     });
+    map.on("move", updatePhotoOverlap);
     map.on("moveend", () => { if (ready) viewport(); });
     map.on("movestart", event => { if (event.originalEvent) send("gesture"); });
     const canvas = map.getCanvas();
