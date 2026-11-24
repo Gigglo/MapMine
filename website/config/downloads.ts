@@ -1,7 +1,12 @@
 import { httpUrl } from "./site";
 
+export const androidRelease = {
+  tag: "v2",
+  url: "https://github.com/Gigglo/MapMine/releases/tag/v2",
+};
+
 export const downloads = {
-  androidApk: "https://github.com/Gigglo/MapMine/releases/tag/v2",
+  androidRelease: androidRelease.url,
   androidStore: httpUrl(process.env.MAPMINE_GOOGLE_PLAY_URL),
   iosStore: httpUrl(process.env.MAPMINE_APP_STORE_URL),
 };

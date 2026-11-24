@@ -62,8 +62,39 @@ h2 { font-size: clamp(2.3rem, 4.8vw, 4.4rem); line-height: 1.06; }
   mask-image: radial-gradient(ellipse 75% 64% at 50% 20%, #000 3%, transparent 87%); pointer-events: none; opacity: .27; }
 .hero-copy { text-align: center; display: grid; justify-items: center; padding-top: clamp(58px, 8.5vw, 112px); }
 .hero-eyebrow { margin-bottom: 19px; color: #b0b0b0; }
+.release-label { color: var(--text); font-size: .875rem; }
+.release-label:hover { text-decoration: underline; text-underline-offset: .25em; }
 .hero h1 { max-width: 14ch; font-size: clamp(2.55rem, 8.3vw, 6.25rem); line-height: 1.02; }
 .hero h1 span { color: #b9b9b9; }
+.release-update {
+  padding: clamp(22px, 5vw, 56px);
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border: 1px solid #333;
+  border-radius: 24px;
+  background: var(--surface);
+}
+.release-update::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background: linear-gradient(100deg, #111e, #1119), url("/posters/bhubaneswar.webp") center / cover;
+  filter: grayscale(1);
+}
+.release-update h2 { font-size: clamp(1.9rem, 4vw, 3.25rem); }
+.release-highlights {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: 12px;
+  padding: 0;
+  margin: clamp(20px, 4vw, 32px) 0 0;
+  list-style: none;
+}
+.release-highlights li { padding: 20px; border: 1px solid #ffffff24; border-radius: 14px; background: #101010e0; }
+.release-highlights h3 { margin: 12px 0 6px; font-size: 1.125rem; font-weight: 550; }
+.release-highlights p { color: #c7c7c7; line-height: 1.55; }
 .hero-break { display: none; }
 .hero-description { max-width: 32rem; margin: 20px auto 0; font-size: clamp(.95rem, 1.6vw, 1.07rem); line-height: 1.65; color: var(--secondary); text-wrap: pretty; }
 .hero-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 9px; margin-top: 24px; }
@@ -162,7 +193,7 @@ h2 { font-size: clamp(2.3rem, 4.8vw, 4.4rem); line-height: 1.06; }
 
 .demo { display: grid; gap: 26px; }
 .demo-heading .eyebrow, .feature-copy .eyebrow, .privacy .eyebrow { margin-bottom: 13px; }
-.demo-heading p:last-child, .feature-copy p:last-child, .privacy p:not(.eyebrow), .download p:not(.release-version) {
+.demo-heading p:last-child, .feature-copy p:last-child, .privacy p:not(.eyebrow), .download p {
   color: var(--secondary); font-size: 1rem; line-height: 1.65; max-width: 33rem; margin-top: 16px; text-wrap: pretty;
 }
 .demo-card { overflow: hidden; border: 1px solid #282828; border-radius: 16px; background: #101010; isolation: isolate; }
@@ -220,7 +251,7 @@ h2 { font-size: clamp(2.3rem, 4.8vw, 4.4rem); line-height: 1.06; }
 
 .download { text-align: center; }
 .download h2 { font-size: clamp(2.65rem, 7vw, 6rem); }
-.download p:not(.release-version) { margin-inline: auto; }
+.download p { margin-inline: auto; }
 .download-choices { display: flex; flex-direction: column; max-width: 690px; margin: 27px auto 0; border: 1px solid #292929; border-radius: 15px; overflow: hidden; }
 .release-choice { display: grid; grid-template-columns: 27px minmax(0, 1fr); gap: 8px 11px; align-items: center; text-align: left;
   padding: 14px; min-height: 72px; background: #111; }
@@ -228,7 +259,6 @@ h2 { font-size: clamp(2.3rem, 4.8vw, 4.4rem); line-height: 1.06; }
 .release-choice strong { display: block; font-weight: 500; font-size: .96rem; }
 .release-choice span { display: block; color: var(--secondary); font-size: .83rem; margin-top: 3px; }
 .release-choice .button { grid-column: 2; justify-self: start; }
-.release-version { margin-top: 13px; color: #969696; font-size: .79rem; }
 .project-links { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px; margin-top: 24px; }
 .product-hunt-badge { display: block; max-width: 100%; border-radius: 9px; }
 .product-hunt-badge img { width: 250px; max-width: 100%; height: auto; }

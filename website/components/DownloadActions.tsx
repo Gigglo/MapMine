@@ -3,7 +3,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { Smartphone, Apple } from "lucide-react";
 
-export type ReleaseLinks = { androidApk?: string; androidStore?: string; iosStore?: string };
+export type ReleaseLinks = { androidRelease: string; androidStore?: string; iosStore?: string };
 
 const observePlatform = () => () => undefined;
 function mobilePlatform() {
@@ -19,9 +19,9 @@ export function DownloadChoices({ links }: { links: ReleaseLinks }) {
     <div className="release-choice" data-release="android">
       <Smartphone size={21} aria-hidden="true" />
       <div><strong>Android</strong>
-        <span>{links.androidApk ? "APK available on GitHub" : links.androidStore ? "Available on Google Play" : "Coming soon"}</span></div>
-      {links.androidApk && <a className="button button-light" href={links.androidApk} download={links.androidApk.startsWith("/") || undefined}>Download APK</a>}
-      {links.androidStore && <a className={`button ${links.androidApk ? "button-dark" : "button-light"}`} href={links.androidStore}>Google Play</a>}
+        <span>Get the APK from the release assets on GitHub.</span></div>
+      <a className="button button-light" href={links.androidRelease}>Get Android APK</a>
+      {links.androidStore && <a className="button button-dark" href={links.androidStore}>Google Play</a>}
     </div>
     <div className="release-choice" data-release="ios">
       <Apple size={21} aria-hidden="true" />

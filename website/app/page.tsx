@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowUpRight, Database, Power, FileDown, Trash2, Play, Fingerprint } from "lucide-react";
+import { ArrowUpRight, Camera, Database, Footprints, Power, FileDown, Trash2, Play, Fingerprint, Route } from "lucide-react";
 import { site } from "../config/site";
 import { mediaFor, screenAssets, type Screen } from "../config/assets";
 import { cartography } from "../config/cartography";
-import { downloads } from "../config/downloads";
+import { androidRelease, downloads } from "../config/downloads";
 import { Footer, MapCredits, Navbar } from "../components/Layout";
 import Reveal from "../components/Reveal";
 import { DownloadChoices, StickyDownload } from "../components/DownloadActions";
@@ -21,7 +21,7 @@ export const metadata: Metadata = {
 
 const features: { screen: Screen; category: string; title: string; description: string }[] = [
   { screen: "fog-of-war", category: "Territory", title: "The unknown is waiting.", description: "Go somewhere new. As you move, the fog lifts and the streets you discover stay on your map." },
-  { screen: "places", category: "Saved places", title: "A map that belongs to you.", description: "Save the places you come back to. MapMine can recognise repeat visits while foreground tracking is on." },
+  { screen: "places", category: "Saved places", title: "A map that belongs to you.", description: "Save the places you come back to. MapMine can recognise repeat visits while location tracking is on." },
   { screen: "heatmap", category: "Activity heatmaps", title: "See where life takes you.", description: "See the streets you travel most often and the places where you spend the most time." },
   { screen: "activity", category: "Travel history", title: "More than just distance.", description: "See how far you travelled, how much new ground you covered, and which days took you somewhere new." },
   { screen: "achievements", category: "Levels & streaks", title: "The adventure never ends.", description: "Earn milestones for new territory, landmarks, and streaks. Share an achievement when you want to show it off." },
@@ -29,10 +29,16 @@ const features: { screen: Screen; category: string; title: string; description: 
 
 const privacy = [
   { icon: Database, text: "Exploration history stored on your device" },
-  { icon: Power, text: "Foreground location tracking you can pause" },
+  { icon: Power, text: "Location tracking you can pause" },
   { icon: FileDown, text: "Personal data export" },
   { icon: Trash2, text: "Location history deletion" },
-  { icon: Fingerprint, text: "No in-app analytics or advertising trackers" },
+  { icon: Fingerprint, text: "GPS coordinates and routes excluded from usage analytics" },
+];
+
+const releaseHighlights = [
+  { icon: Footprints, title: "Background exploration", description: "Keep revealing territory and recording journeys with the screen locked when you allow background location." },
+  { icon: Route, title: "Route replay", description: "Open Activity to replay a day’s route or revisit an individual journey." },
+  { icon: Camera, title: "Photo memories", description: "Add photos to saved places to remember what you found there." },
 ];
 
 export default function Home() {
@@ -53,11 +59,11 @@ export default function Home() {
     <main id="main">
       <section className="hero" aria-labelledby="hero-heading">
         <div className="hero-copy shell">
-          <p className="eyebrow hero-eyebrow">The world is your map</p>
+          <a className="eyebrow hero-eyebrow release-label" href="#whats-new">MapMine {androidRelease.tag} · What’s new</a>
           <h1 id="hero-heading">The world is yours<br className="hero-break" /> <span>to discover.</span></h1>
           <p className="hero-description">Explore the real world, lift the fog as you go, and build a map of everywhere you’ve been.</p>
           <div className="hero-actions" id="hero-actions">
-            <a className="button button-light" href="#download">Download MapMine</a>
+            <a className="button button-light" href={androidRelease.url}>Download {androidRelease.tag} for Android</a>
             <a className="button button-dark" href="#launch-film"><Play size={14} aria-hidden="true" />Watch the launch film</a>
           </div>
         </div>
@@ -75,6 +81,19 @@ export default function Home() {
             <MapCredits />
           </figcaption>
         </figure>
+      </section>
+
+      <section id="whats-new" className="shell release-update section-space" aria-labelledby="release-heading">
+        <h2 id="release-heading">What’s new in MapMine {androidRelease.tag}</h2>
+        <ul className="release-highlights">
+          {releaseHighlights.map(({ icon: Icon, title, description }) => (
+            <li key={title}>
+              <Icon size={24} strokeWidth={1.7} aria-hidden="true" />
+              <h3>{title}</h3>
+              <p>{description}</p>
+            </li>
+          ))}
+        </ul>
       </section>
 
       <section id="launch-film" className="shell launch-film section-space" aria-labelledby="launch-film-heading">
@@ -145,7 +164,6 @@ export default function Home() {
         <Reveal><h2 id="download-heading">Go outside.<br />Discover something.</h2><p>A familiar street can become a new adventure.</p></Reveal>
         <Reveal delay={0.08}>
           <DownloadChoices links={downloads} />
-          <p className="release-version">App version {site.version}</p>
           <div className="project-links">
             <a href={site.productHunt.url} target="_blank" rel="noopener noreferrer" className="product-hunt-badge">
               <Image alt="MapMine — The World Is Yours to Discover. | Product Hunt" width={250} height={54}
