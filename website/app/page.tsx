@@ -63,7 +63,7 @@ export default function Home() {
           <h1 id="hero-heading">The world is yours<br className="hero-break" /> <span>to discover.</span></h1>
           <p className="hero-description">Explore the real world, lift the fog as you go, and build a map of everywhere you’ve been.</p>
           <div className="hero-actions" id="hero-actions">
-            <a className="button button-light" href={androidRelease.url}>Download {androidRelease.tag} for Android</a>
+            <a className="button button-light" href={androidRelease.url}>Download</a>
             <a className="button button-dark" href="#launch-film"><Play size={14} aria-hidden="true" />Watch the launch film</a>
           </div>
         </div>

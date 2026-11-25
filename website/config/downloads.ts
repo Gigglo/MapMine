@@ -2,7 +2,7 @@ import { httpUrl } from "./site";
 
 export const androidRelease = {
   tag: "v2",
-  url: "https://github.com/Gigglo/MapMine/releases/tag/v2",
+  url: "https://github.com/Gigglo/MapMine/releases/tag/bugs_fixed",
 };
 
 export const downloads = {

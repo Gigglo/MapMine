@@ -20,7 +20,7 @@ export function DownloadChoices({ links }: { links: ReleaseLinks }) {
       <Smartphone size={21} aria-hidden="true" />
       <div><strong>Android</strong>
         <span>Get the APK from the release assets on GitHub.</span></div>
-      <a className="button button-light" href={links.androidRelease}>Get Android APK</a>
+      <a className="button button-light" href={links.androidRelease}>Download</a>
       {links.androidStore && <a className="button button-dark" href={links.androidStore}>Google Play</a>}
     </div>
     <div className="release-choice" data-release="ios">
@@ -50,5 +50,5 @@ export function StickyDownload() {
     observer.observe(download);
     return () => observer.disconnect();
   }, []);
-  return shown && <div className="sticky-download"><a href="#download" className="button button-light">Download MapMine</a></div>;
+  return shown && <div className="sticky-download"><a href="#download" className="button button-light">Download</a></div>;
 }
