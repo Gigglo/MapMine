@@ -26,7 +26,7 @@ const pages = [
   },
   {
     title: "See how far you've gone.",
-    description: "Open Activity and tap a bar to see that day's distance and play back its route. Use the arrows to browse older weeks.",
+    description: "In Activity, choose Daily, Weekly, 30 days, or 90 days. Play a daily route or tap a weekly bar to see that day's activity.",
     tip: "Open Achievements to see milestones you've earned and share an achievement card.",
   },
 ] as const;

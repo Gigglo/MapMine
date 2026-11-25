@@ -1,18 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
-import { ChevronLeft, ChevronRight, Route } from "lucide-react-native";
+import { Check, ChevronDown, ChevronLeft, ChevronRight, Route } from "lucide-react-native";
 import { router } from "expo-router";
 import { Button, Card, Chips, Page, Section, Stat, formatArea, formatDistance, styles, tap } from "../components/ui/primitives";
-import { readActivityDays, readDayActivity, type Day } from "../database/repository";
+import { readActivityRange, readDayActivity } from "../database/repository";
 import RouteMap from "../features/activity/RouteMap";
-import { dayKey, precedingDay } from "../features/exploration/engine";
+import { activityPeriods, activityWindow, summarizeActivity, type ActivityPeriod } from "../features/activity/activityStats";
+import { dayKey } from "../features/exploration/engine";
 import { useSession } from "../store/session";
 import { interfaceEggs } from "../features/easterEggs/catalog";
 import { discoverEgg } from "../features/easterEggs/discovery";
 import { colors } from "../theme/color";
 
 const series = ["Distance", "Area"] as const;
+const periods = Object.keys(activityPeriods) as ActivityPeriod[];
 const shortDate = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
 const dayFormat = new Intl.DateTimeFormat(undefined, { weekday: "long", month: "long", day: "numeric" });
 const timeFormat = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
@@ -36,95 +38,143 @@ function ActivityBar({ height, selected }: { height: number; selected: boolean }
 
 export default function ActivityScreen({ onSheetBack }: { onSheetBack?: () => void } = {}) {
   const today = dayKey();
-  const [day, setDay] = useState(today);
-  const [weeksBack, setWeeksBack] = useState(0);
+  const [selectedDate, setSelectedDate] = useState<string>();
+  const [period, setPeriod] = useState<ActivityPeriod>("Weekly");
+  const [periodOpen, setPeriodOpen] = useState(false);
+  const [pagesBack, setPagesBack] = useState(0);
   const [journeyId, setJourneyId] = useState<number | null>(null);
   const [metric, setMetric] = useState<(typeof series)[number]>("Distance");
-  const [history, setHistory] = useState<{ end: string; days: Day[] }>();
+  const [history, setHistory] = useState<{ key: string; data: Awaited<ReturnType<typeof readActivityRange>> | null }>();
   const [activity, setActivity] = useState<{ day: string; data: Awaited<ReturnType<typeof readDayActivity>> }>();
   const [failedDay, setFailedDay] = useState("");
   const [reload, setReload] = useState(0);
   const snapshot = useSession(state => state.summary);
   const historyRevision = useSession(state => state.historyRevision);
 
-  const end = precedingDay(today, weeksBack * 7);
-  const start = precedingDay(end, 6);
-  const weekRevision = useSession(state => state.latestRecordedDay &&
+  const window = useMemo(() => activityWindow(today, period, pagesBack), [today, period, pagesBack]);
+  const { start, end } = window;
+  const rangeKey = start + "/" + end;
+  const daily = period === "Daily";
+  const showDay = daily || period === "Weekly";
+  const day = selectedDate && selectedDate >= start && selectedDate <= end ? selectedDate : end;
+  const rangeRevision = useSession(state => state.latestRecordedDay &&
     state.latestRecordedDay >= start && state.latestRecordedDay <= end ? state.revision : 0);
   const dayRevision = useSession(state => state.latestRecordedDay === day ? state.sampleRevision : 0);
 
   useEffect(() => {
-    if (!weeksBack) return;
+    if (daily) return;
     let active = true;
-    void readActivityDays(start, end).then(days => { if (active) setHistory({ end, days }); })
-      .catch(() => { if (active) setHistory({ end, days: [] }); });
+    void readActivityRange(start, end).then(data => { if (active) setHistory({ key: rangeKey, data }); })
+      .catch(() => { if (active) setHistory({ key: rangeKey, data: null }); });
     return () => { active = false; };
-  }, [start, end, weeksBack, historyRevision, weekRevision]);
+  }, [daily, start, end, rangeKey, historyRevision, rangeRevision, reload]);
 
   useEffect(() => {
+    if (!showDay) return;
     let active = true;
     void readDayActivity(day).then(data => {
       if (active) { setActivity({ day, data }); setFailedDay(""); }
     }).catch(() => { if (active) setFailedDay(day); });
     return () => { active = false; };
-  }, [day, dayRevision, historyRevision, reload]);
+  }, [showDay, day, dayRevision, historyRevision, reload]);
 
   function selectDate(value: string) {
     tap();
-    setDay(value);
+    setSelectedDate(value);
     setJourneyId(null);
   }
 
-  function changeWeek(delta: number) {
-    const next = Math.max(0, weeksBack + delta);
-    setWeeksBack(next);
-    selectDate(precedingDay(today, next * 7));
+  function changePage(delta: number) {
+    tap();
+    setPagesBack(current => Math.max(0, current + delta));
+    setSelectedDate(undefined);
+    setJourneyId(null);
+  }
+
+  function selectPeriod(value: ActivityPeriod) {
+    tap();
+    setPeriodOpen(false);
+    if (value === period) return;
+    setPeriod(value);
+    setPagesBack(0);
+    setSelectedDate(undefined);
+    setJourneyId(null);
   }
 
   const selected = activity?.day === day ? activity.data : undefined;
   const selectedJourney = selected?.journeys.find(journey => journey.id === journeyId);
   const route = useMemo(() => selectedJourney ? selected?.points.filter(point => point.journey === selectedJourney.id) : selected?.points,
     [selected, selectedJourney]);
-  const days = weeksBack ? (history?.end === end ? history.days : []) : (snapshot?.days ?? []);
-  const byDay = new Map(days.map(entry => [entry.day, entry]));
-  const dates = Array.from({ length: 7 }, (_, index) => precedingDay(end, 6 - index));
-  const values = dates.map(date => {
-    const entry = byDay.get(date);
-    return (metric === "Distance" ? entry?.meters : entry?.area) ?? 0;
-  });
+  const range = history?.key === rangeKey ? history.data : undefined;
+  const chart = useMemo(() => range ? summarizeActivity(range.days, window) : undefined, [range, window]);
+  const field = metric === "Distance" ? "meters" : "area";
+  const values = chart?.buckets.map(bucket => bucket[field]) ?? [];
   const max = Math.max(1, ...values);
   const format = metric === "Distance" ? formatDistance : formatArea;
 
   return <Page title="Activity" onTitleLongPress={() => void discoverEgg(interfaceEggs.activity)} embedded={Boolean(onSheetBack)} onBack={onSheetBack ?? (() => router.navigate("/"))}>
     <Card>
-      <View style={[styles.row, local.weekHeader]}>
-        <View style={styles.flex}>
-          <Text accessibilityRole="header" style={styles.heading}>Weekly activity</Text>
-          <Text style={styles.secondary}>{shortDate.format(dateAtNoon(start))} – {shortDate.format(dateAtNoon(end))}</Text>
-        </View>
-        <Pressable accessibilityRole="button" accessibilityLabel="Previous week" style={local.icon} onPress={() => changeWeek(1)}>
-          <ChevronLeft color={colors.text} size={19} />
-        </Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="Next week" accessibilityState={{ disabled: weeksBack === 0 }}
-          disabled={weeksBack === 0} style={local.icon} onPress={() => changeWeek(-1)}>
-          <ChevronRight color={weeksBack ? colors.text : colors.textMuted} size={19} />
+      <View style={[styles.row, local.rangeHeader]}>
+        <Text accessibilityRole="header" style={[styles.heading, styles.flex]}>Activity stats</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel={`Activity period, ${period}`}
+          accessibilityState={{ expanded: periodOpen }} onPress={() => { tap(); setPeriodOpen(open => !open); }}
+          style={local.periodButton}>
+          <Text style={styles.buttonText}>{period}</Text>
+          <ChevronDown color={colors.text} size={16} />
         </Pressable>
       </View>
-      <Chips items={series} selected={metric} onChange={setMetric} />
-      <Text style={local.total}>{weeksBack && history?.end !== end
-        ? "—" : format(values.reduce((total, value) => total + value, 0))}</Text>
-      <View style={local.bars}>{dates.map((date, index) => (
-        <Pressable key={date} accessibilityRole="button" accessibilityState={{ selected: date === day }}
-          accessibilityLabel={dayFormat.format(dateAtNoon(date)) + ", " + format(values[index])}
-          style={local.column} onPress={() => selectDate(date)}>
-          <View style={local.barTrack}>
-            <ActivityBar height={Math.max(3, values[index] / max * 80)} selected={date === day} />
-          </View>
-          <Text style={[local.dayLabel, date === day && local.activeLabel]}>{weekday.format(dateAtNoon(date))}</Text>
+      {periodOpen && <View style={local.periodMenu}>{periods.map(option => (
+        <Pressable key={option} accessibilityRole="button" accessibilityState={{ selected: option === period }}
+          onPress={() => selectPeriod(option)} style={[local.periodOption, option === period && local.journeySelected]}>
+          <Text style={[styles.text, styles.flex]}>{option}</Text>
+          {option === period && <Check color={colors.text} size={16} />}
         </Pressable>
-      ))}</View>
+      ))}</View>}
+      <View style={[styles.row, local.rangeHeader]}>
+        <Text style={[styles.secondary, styles.flex]}>
+          {daily ? dayFormat.format(dateAtNoon(end)) : `${shortDate.format(dateAtNoon(start))} – ${shortDate.format(dateAtNoon(end))}`}
+        </Text>
+        <Pressable accessibilityRole="button" accessibilityLabel="Previous activity period" style={local.icon} onPress={() => changePage(1)}>
+          <ChevronLeft color={colors.text} size={19} />
+        </Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="Next activity period" accessibilityState={{ disabled: pagesBack === 0 }}
+          disabled={pagesBack === 0} style={local.icon} onPress={() => changePage(-1)}>
+          <ChevronRight color={pagesBack ? colors.text : colors.textMuted} size={19} />
+        </Pressable>
+      </View>
+      {!daily && (range === null ? <>
+        <Text style={styles.secondary}>Could not load activity stats.</Text>
+        <Button label="Retry stats" onPress={() => setReload(value => value + 1)} />
+      </> : range && chart ? <>
+        <Chips items={series} selected={metric} onChange={setMetric} />
+        <Text style={local.total}>{format(chart.totals[field])}</Text>
+        <View style={styles.wrap}>
+          <Stat label={metric === "Distance" ? "Territory" : "Distance"}
+            value={metric === "Distance" ? formatArea(chart.totals.area) : formatDistance(chart.totals.meters)} />
+          <Stat label="Moving time" value={duration(chart.totals.seconds)} />
+          <Stat label="Places visited" value={range.visits} />
+        </View>
+        {window.bucketDays > 1 && <Text style={styles.secondary}>{window.bucketDays}-day totals</Text>}
+        <View style={local.bars}>{chart.buckets.map(({ first, last }, index) => {
+          const active = showDay && first === day;
+          const label = first === last ? dayFormat.format(dateAtNoon(first))
+            : `${shortDate.format(dateAtNoon(first))} – ${shortDate.format(dateAtNoon(last))}`;
+          const description = `${label}, ${format(values[index])}`;
+          const bar = <>
+            <View style={local.barTrack}>
+              <ActivityBar height={Math.max(3, values[index] / max * 80)} selected={active} />
+            </View>
+            <Text style={[local.dayLabel, active && local.activeLabel]}>
+              {showDay ? weekday.format(dateAtNoon(first)) : dateAtNoon(first).getDate()}
+            </Text>
+          </>;
+          return showDay ? <Pressable key={first} accessibilityRole="button" accessibilityState={{ selected: active }}
+            accessibilityLabel={description} style={local.column} onPress={() => selectDate(first)}>{bar}</Pressable>
+            : <View key={first} accessible accessibilityLabel={description} style={local.column}>{bar}</View>;
+        })}</View>
+      </> : <Text accessibilityLiveRegion="polite" style={styles.secondary}>Loading activity stats…</Text>)}
     </Card>
-    <Section title={day === today ? "Today" : dayFormat.format(dateAtNoon(day))}>
+    {showDay && <Section title={day === today ? "Today" : dayFormat.format(dateAtNoon(day))}>
       {failedDay === day ? <Card><Text style={styles.secondary}>Could not load activity.</Text>
         <Button label="Retry" onPress={() => { setFailedDay(""); setReload(value => value + 1); }} /></Card>
         : !selected ? <Card><Text accessibilityLiveRegion="polite" style={styles.secondary}>Loading activity…</Text></Card>
@@ -161,7 +211,7 @@ export default function ActivityScreen({ onSheetBack }: { onSheetBack?: () => vo
             </Pressable>)}
           </Card>}
         </View>}
-    </Section>
+    </Section>}
     <Section title="Lifetime">
       <Card><View style={styles.wrap}>
         <Stat label="Distance" value={formatDistance(snapshot?.metrics.meters ?? 0)} />
@@ -177,7 +227,11 @@ export default function ActivityScreen({ onSheetBack }: { onSheetBack?: () => vo
 
 const local = StyleSheet.create({
   stack: { gap: 12 },
-  weekHeader: { gap: 1 },
+  rangeHeader: { gap: 1 },
+  periodButton: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12,
+    borderWidth: 1, borderColor: colors.border, borderRadius: 8 },
+  periodMenu: { borderWidth: 1, borderColor: colors.border, borderRadius: 8, overflow: "hidden" },
+  periodOption: { minHeight: 44, flexDirection: "row", alignItems: "center", paddingHorizontal: 12 },
   icon: { width: 44, height: 44, justifyContent: "center", alignItems: "center" },
   hero: { padding: 16, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, gap: 8 },
   distance: { color: colors.text, fontSize: 39, fontWeight: "600", letterSpacing: -1.6, fontVariant: ["tabular-nums"] },

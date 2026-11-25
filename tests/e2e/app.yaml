@@ -1,0 +1,104 @@
+appId: com.mapmine.app
+name: MapMine core app flows
+---
+- launchApp:
+    clearState: true
+- assertVisible: "Make the map yours."
+- tapOn: "Continue"
+- assertVisible: "Track your first walk."
+- tapOn: "Continue"
+- assertVisible: "Save the places you love."
+- tapOn: "Continue"
+- assertVisible: "See how far you've gone."
+- tapOn: "Open MapMine"
+
+- tapOn: "Map layers"
+- tapOn: "Heatmap.*"
+- assertVisible: "Time spent"
+- tapOn: "Travel density"
+- tapOn: "Month"
+- tapOn: "Close"
+
+- tapOn: "Search places or coordinates"
+- inputText: "20.2961, 85.8245"
+- tapOn: "Show coordinates on map.*"
+- tapOn: "Save pin"
+- tapOn: "Place name"
+- inputText: "Smoke Test Landmark"
+- hideKeyboard
+- scrollUntilVisible:
+    element: "Save place"
+    direction: DOWN
+- tapOn: "Save place"
+- assertNotVisible: "Save a place"
+
+- tapOn: "Expand exploration summary"
+- tapOn: "Places"
+- assertVisible: "Smoke Test Landmark.*"
+- tapOn: "Search places"
+- inputText: "missing"
+- assertVisible: "No matching places"
+- tapOn: "Clear search"
+- hideKeyboard
+- tapOn: "Smoke Test Landmark.*"
+- scrollUntilVisible:
+    element: "Delete place"
+    direction: DOWN
+- tapOn: "Delete place"
+- assertVisible: 'Delete saved place\?'
+- tapOn: "^Delete$"
+- assertVisible: "Make the map yours"
+- tapOn: "Back"
+
+- tapOn: "Activity"
+- assertVisible: "Activity stats"
+- assertVisible: "Activity period, Weekly"
+- tapOn: "Area"
+- tapOn: "Activity period, Weekly"
+- tapOn: "30 days"
+- assertVisible: "Activity period, 30 days"
+- assertVisible: "5-day totals"
+- tapOn: "Previous activity period"
+- assertVisible: "5-day totals"
+- tapOn: "Next activity period"
+- tapOn: "Activity period, 30 days"
+- tapOn: "90 days"
+- assertVisible: "Activity period, 90 days"
+- assertVisible: "10-day totals"
+- tapOn: "Activity period, 90 days"
+- tapOn: "Daily"
+- assertVisible: "Activity period, Daily"
+- scrollUntilVisible:
+    element: "Day route"
+    direction: DOWN
+- assertVisible: "Your route will appear here after you travel with tracking on."
+- scrollUntilVisible:
+    element: "Previous activity period"
+    direction: UP
+- tapOn: "Previous activity period"
+- tapOn: "Next activity period"
+- tapOn: "Back"
+
+- tapOn: "Achievements"
+- assertVisible: "Level 1"
+- tapOn: "Stray Cat.*"
+- assertVisible: "Discover your first territory"
+- tapOn: "Back"
+- tapOn: "Collapse exploration summary"
+
+- tapOn: "Open profile"
+- scrollUntilVisible:
+    element: "Settings"
+    direction: DOWN
+- tapOn: "Settings"
+- tapOn: "Profile name"
+- eraseText
+- inputText: "Smoke Tester"
+- hideKeyboard
+- tapOn: "Save name"
+- scrollUntilVisible:
+    element: 'Name saved\.'
+    direction: DOWN
+- launchApp
+- tapOn: "Open profile"
+- assertVisible: "Smoke Tester"

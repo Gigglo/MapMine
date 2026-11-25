@@ -11,7 +11,8 @@ import { mapHeight, mapWidth, routeGeometry, type Leg } from "./routeGeometry";
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
-const cartoKey = process.env.EXPO_PUBLIC_CARTO_API_KEY;
+const cartoKey = process.env.EXPO_PUBLIC_CARTO_API_KEY?.trim();
+const replayDurationMs = 20_000;
 
 function Trace({ leg, progress, total }: { leg: Leg; progress: SharedValue<number>; total: number }) {
   const animatedProps = useAnimatedProps(() => ({
@@ -46,10 +47,13 @@ export default function RouteMap({ points, replay = false, onMapReady }: { point
   const moving = useMemo(() => legs.filter(leg => leg.length > 0), [legs]);
   const progress = useSharedValue(1);
   const [playing, setPlaying] = useState(false);
+  const [failedTile, setFailedTile] = useState<string>();
+  const [tileAttempt, setTileAttempt] = useState(0);
   const trackWidth = useRef(0);
   const progressStyle = useAnimatedStyle(() => ({ width: (progress.get() * 100) + "%" }));
   const playable = replay && total > 0;
-  const loaded = useRef(new Set<string>());
+  const pendingTiles = useMemo(() => new Set(tiles.map(tile => tile.id)), [tiles]);
+  const tileSetKey = zoom + "/" + tiles.map(tile => tile.id).join("/");
   useEffect(() => {
     if (!onMapReady) return;
     if (!cartoKey || !tiles.length) {
@@ -66,10 +70,12 @@ export default function RouteMap({ points, replay = false, onMapReady }: { point
       setPlaying(false);
       return;
     }
-    if (progress.get() >= 1) progress.set(0);
+    const current = progress.get();
+    const start = current >= 1 ? 0 : current;
+    progress.set(start);
     setPlaying(true);
     progress.set(withTiming(1, {
-      duration: Math.max(250, 7200 * (1 - progress.get())), easing: Easing.linear, reduceMotion: ReduceMotion.Never,
+      duration: replayDurationMs * (1 - start), easing: Easing.linear, reduceMotion: ReduceMotion.Never,
     }, finished => { if (finished) scheduleOnRN(setPlaying, false); }));
   }
 
@@ -81,14 +87,17 @@ export default function RouteMap({ points, replay = false, onMapReady }: { point
 
   return <View style={local.root}>
     <View accessibilityLabel="Map of recorded GPS points" style={local.map}>
-      {cartoKey && tiles.map(tile => <Image key={tile.id} resizeMode="stretch" fadeDuration={0}
-        onLoadEnd={onMapReady ? () => {
-          loaded.current.add(tile.id);
-          if (loaded.current.size === tiles.length) onMapReady(true);
-        } : undefined}
-        source={{ uri: `https://a.basemaps.cartocdn.com/dark_all/${zoom}/${tile.col}/${tile.row}@2x.png?key=${encodeURIComponent(cartoKey)}` }}
-        style={{ position: "absolute", left: (tile.left / mapWidth * 100) + "%", top: (tile.top / mapHeight * 100) + "%",
-          width: (256 / mapWidth * 100) + "%", height: (256 / mapHeight * 100) + "%" }} />)}
+      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+        {cartoKey && tiles.map(tile => <Image key={zoom + "/" + tile.id + "/" + tileAttempt} resizeMode="stretch" fadeDuration={0}
+          onError={replay ? () => setFailedTile(tileSetKey) : undefined}
+          onLoadEnd={onMapReady ? () => {
+            pendingTiles.delete(tile.id);
+            if (!pendingTiles.size) onMapReady(true);
+          } : undefined}
+          source={{ uri: `https://basemaps.cartocdn.com/dark_all/${zoom}/${tile.col}/${tile.row}@2x.png?key=${encodeURIComponent(cartoKey)}` }}
+          style={{ position: "absolute", left: (tile.left / mapWidth * 100) + "%", top: (tile.top / mapHeight * 100) + "%",
+            width: (256 / mapWidth * 100) + "%", height: (256 / mapHeight * 100) + "%" }} />)}
+      </View>
       <View pointerEvents="none" style={StyleSheet.absoluteFill}>
         <Svg viewBox={`0 0 ${mapWidth} ${mapHeight}`} width="100%" height="100%">
           {legs.map((leg, index) => leg.length > 0 ? <Path key={index} d={leg.path} fill="none"
@@ -103,6 +112,14 @@ export default function RouteMap({ points, replay = false, onMapReady }: { point
         <Text allowFontScaling={false} style={local.creditText}>© OpenStreetMap © CARTO</Text>
       </Pressable>}
     </View>
+    {replay && !cartoKey && <Text style={styles.secondary}>The basemap is unavailable in this build.</Text>}
+    {replay && cartoKey && failedTile === tileSetKey && <View style={styles.row}>
+      <Text style={styles.secondary} accessibilityLiveRegion="polite">Some map tiles could not load.</Text>
+      <Button label="Retry map" onPress={() => {
+        setFailedTile(undefined);
+        setTileAttempt(attempt => attempt + 1);
+      }} />
+    </View>}
     {playable && <>
       <Pressable accessibilityRole="adjustable" accessibilityLabel="Route replay position"
         accessibilityActions={[{ name: "increment" }, { name: "decrement" }]}

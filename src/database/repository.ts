@@ -108,8 +108,13 @@ function dayBounds(day: string) {
   return [new Date(year, month - 1, date).getTime(), new Date(year, month - 1, date + 1).getTime()] as const;
 }
 
-export const readActivityDays = (first: string, last: string) => query(db =>
-  db.getAllAsync<Day>("SELECT * FROM daily_statistics WHERE day BETWEEN ? AND ? ORDER BY day", first, last));
+export const readActivityRange = (first: string, last: string) => query(async db => {
+  const [days, visits] = await Promise.all([
+    db.getAllAsync<Day>("SELECT * FROM daily_statistics WHERE day BETWEEN ? AND ? ORDER BY day", first, last),
+    db.getFirstAsync<{ count: number }>("SELECT count(DISTINCT place) count FROM place_visits WHERE day BETWEEN ? AND ?", first, last),
+  ]);
+  return { days, visits: visits?.count ?? 0 };
+});
 
 export const readDayActivity = (day: string) => query(async db => {
   const [start, end] = dayBounds(day);

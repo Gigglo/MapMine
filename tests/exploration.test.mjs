@@ -117,8 +117,10 @@ test("every supplied meme appears in exactly one achievement", () => {
   const hash = url => createHash("sha256").update(readFileSync(url)).digest("hex");
   const originals = readdirSync(source).filter(file => file.endsWith(".jfif"))
     .map(file => hash(new URL(encodeURIComponent(file), source))).sort();
-  const copies = milestones.map(({ id }) => hash(new URL(id + ".jpg", badges))).sort();
-  assert.equal(new Set(copies).size, milestones.length);
+  const artwork = milestones.map(({ id }) => ({ id, hash: hash(new URL(id + ".jpg", badges)) }));
+  assert.equal(new Set(artwork.map(badge => badge.hash)).size, milestones.length);
+  // Delulu Estate has its own artwork outside the supplied meme collection.
+  const copies = artwork.filter(({ id }) => id !== "delulu-estate").map(badge => badge.hash).sort();
   assert.deepEqual(copies, originals);
 });
 

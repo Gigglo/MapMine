@@ -58,7 +58,7 @@ test("recording is transactional and idempotent, and privacy actions erase the i
     assert.equal((await repo.readPreferences()).notifications, 0);
     await repo.setPreferences({ notifications: 1 });
     assert.equal((await repo.readPreferences()).notifications, 1);
-    const time = Date.now() - 10_000;
+    const time = new Date().setHours(0, 0, 10, 0);
     const fix = { ...point, accuracy: 5, heading: null, speed: 1, timestamp: time };
     const place = await repo.savePlace({ ...point, name: "Library", category: "School", icon: "Pin", notes: "", radius: 65, dwell: 90 });
     const memory = { ...point, name: "Park", category: "Other", icon: "Pin", notes: "Morning walk", radius: 65, dwell: 90 };
@@ -112,7 +112,9 @@ test("recording is transactional and idempotent, and privacy actions erase the i
     assert.equal(summary.unlocked.length, 2);
 
     const date = dayKey(time);
-    assert.deepEqual((await repo.readActivityDays(date, date)).map(day => day.meters), [12]);
+    const stats = await repo.readActivityRange(date, date);
+    assert.deepEqual(stats.days.map(day => day.meters), [12]);
+    assert.equal(stats.visits, 1);
     const activity = await repo.readDayActivity(date);
     assert.equal(activity.stats.meters, 12);
     assert.equal(activity.visits, 1);
@@ -134,11 +136,25 @@ test("recording is transactional and idempotent, and privacy actions erase the i
     assert.equal((await repo.visibleHeat(bounds, "Today"))[0].seconds, 8);
     await repo.setPreferences({ tracking: 1 });
     const stationary = await repo.recordFix({ ...input, journey: first.journey, cells, meters: 0, seconds: 0,
-      heatSeconds: 4, summaryDay: dayKey(), fix: { ...fix, timestamp: Date.now() } });
+      heatSeconds: 4, summaryDay: dayKey(), fix: { ...fix, timestamp: time + 12_000 } });
     assert.equal(stationary.recorded, true);
     assert.equal(stationary.summary, null);
     assert.equal((await repo.visibleHeat(bounds, "Today"))[0].samples, 3);
     assert.equal((await repo.summary()).metrics.meters, 12);
+    const previousDate = new Date(time);
+    previousDate.setDate(previousDate.getDate() - 1);
+    const previousDay = dayKey(previousDate.getTime());
+    native.prepare("INSERT INTO daily_statistics(day, meters) VALUES(?, ?)").run(previousDay, 25);
+    const otherPlace = await repo.savePlace(memory);
+    const addVisit = native.prepare("INSERT INTO place_visits VALUES (?, ?, ?, ?, ?, 0)");
+    for (const id of [place, otherPlace]) {
+      addVisit.run(id, previousDate.getTime(), previousDate.getTime() + 90_000, previousDay, 90);
+    }
+    const range = await repo.readActivityRange(previousDay, date);
+    assert.deepEqual(range.days.map(row => row.meters), [25, 12]);
+    assert.equal(range.visits, 2);
+    assert.equal((await repo.readActivityRange("2000-01-01", "2000-01-30")).visits, 0);
+    await repo.deletePlace(otherPlace);
     await repo.clearHistory(false);
     const filtered = await repo.exportData();
     assert.equal(filtered.samples.length, 0);
